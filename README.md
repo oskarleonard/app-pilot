@@ -19,8 +19,10 @@ qa-harness/
 │   └── target.example.py
 ├── web/           # web engine (agent eyes/hands = the Playwright MCP)
 │   ├── qa, core/, RUNBOOK.md, target.example.py
-├── common/        # shared: publish.py (qa-assets PR-image hosting)
-├── templates/     # project shims + product/ layer template
+├── missions/      # job briefs the agent runs on the engines (bug-hunt,
+│                  #   scenario-exec, ... — schema in missions/_format.md)
+├── common/        # shared: publish.py (qa-assets) + targetkit.py (target machinery)
+├── templates/     # project shims + _harness.py + product/ layer template
 └── PORTING.md     # onboarding a new project + hard-won platform gotchas
 ```
 
@@ -45,6 +47,11 @@ file, those commands no-op with a notice.
 A team can also keep the product layer in a dedicated repo (e.g. a central
 QA-scenario repo) and point `product/` at that checkout — the engine doesn't
 care where the dir comes from.
+
+**Missions** sit on top of all of this: `missions/*.md` are job briefs
+(bug-hunt, scenario-exec, ...) launched by ~10-line shims in each project's
+`.claude/commands/`. One mission, N projects, zero copy drift — see
+`missions/_format.md` for the schema and invocation contract.
 
 ## Install (once per machine)
 
