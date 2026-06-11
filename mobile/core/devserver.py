@@ -118,7 +118,7 @@ def app_state():
     """'app' | 'launcher' | 'springboard' | 'unknown', read from the a11y tree.
 
     An earlier version sampled the center pixel (its app is dark, the Expo
-    dev-launcher light) — lisk is light-themed, so pixels can't distinguish
+    dev-launcher light) — a light-themed app means pixels can't distinguish
     them. Instead grep labelled elements for distinctive strings. The idb tree
     describes the FRONTMOST screen, so the iOS home screen (app terminated /
     deep link not approved) is detectable by its dock apps. An EMPTY tree can
