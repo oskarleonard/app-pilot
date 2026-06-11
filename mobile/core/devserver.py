@@ -40,7 +40,7 @@ import crashlog  # noqa: E402
 import idb_ui  # noqa: E402
 import target  # noqa: E402
 
-LOCAL_BACKEND_URL = getattr(target, "BACKEND_URL", "http://localhost:8080")  # ground-truth API; None = project has no backend
+LOCAL_BACKEND_URL = getattr(target, "BACKEND_URL", None)  # ground-truth API; unset/None = project has no backend
 _BACKEND_HINT = getattr(target, "BACKEND_HINT", "start your local backend")  # printed when the backend is DOWN
 
 
