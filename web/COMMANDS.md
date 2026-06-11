@@ -1,54 +1,57 @@
-# web-qa — command cheatsheet
+# web-qa — command cheatsheet (web engine)
 
-One front door: **`scripts/qa/qa <command>`** (self-contained — no
-package.json changes). The agent's live eyes/hands are the **Playwright MCP**
-(`browser_*` tools — setup in README.md). Operating procedure: RUNBOOK.md.
+One front door per project: **`scripts/qa/qa <command>`** (a shim into this
+engine). The agent's live eyes/hands are the **Playwright MCP** (`browser_*`
+tools — setup in README.md). Operating procedure: RUNBOOK.md.
 
-## Tester server (pinned :3002 — your dev :3000 is never touched)
+## Tester server (pinned port — your dev server is never touched)
 
 | Command | Does |
 |---------|------|
-| `qa serve`  | Start the tester's Next dev server in the active mode (exit 1 if it never comes up) |
-| `qa health` | Server up? Backend up (local mode)? Exit 1 when anything is down |
+| `qa serve`  | Start the tester's dev server in the active mode (exit 1 if it never comes up) |
+| `qa health` | Server up? Backend up (if the project pins one)? Exit 1 when anything is down |
 | `qa status` | Pid, port holders, log size |
 | `qa logs [N]` | Last N lines of the tester server log (compile errors live here) |
 | `qa stop`   | Kill the tester's server (this port only) |
 
-Modes: `qa serve` (local, default) · `LISK_QA_MODE=msw qa serve` ·
-`LISK_QA_MODE=staging qa serve`. Local mode needs
-`cd ../lisk-backend && make run` first.
+Modes are project-defined in `target.py` (env-switched — see the project's
+`product/RUNBOOK.md`).
 
 ## Run bookkeeping + archival evidence
 
 ```text
-scripts/qa/qa init --scope <all|home|send|transactions|contacts|notifications|settings|workspace> \
-                   [--driver wake|goal] [--label L]
-scripts/qa/qa shot <label> [path]     # full-page screenshot of APP_URL+path into the run
-                                      # (routes are workspace-slug-scoped, e.g. /devcorp/transactions)
-                                      # (fresh context — local/msw modes; staging uses the
-                                      # MCP's in-session browser_take_screenshot)
-scripts/qa/qa note <finding text>
-scripts/qa/qa act <audit text>
+qa init --scope <scope> [--driver wake|goal] [--label L]   # scopes: product-defined
+qa shot <label> [path]     # full-page screenshot of APP_URL+path into the run
+                           # (fresh headless context — mock modes only; staging
+                           # uses the MCP's in-session browser_take_screenshot)
+qa note <finding text>
+qa act <audit text>
 ```
 
-## Backend invariants — logic bugs the screen can't show (local mode only)
+## Ground truth — logic bugs the screen can't show (local mode)
 
 ```text
-scripts/qa/qa check                          # assert INV-1..7 vs backend ground truth
-scripts/qa/qa snapshot --out /tmp/b.json     # snapshot transaction states before an action
-scripts/qa/qa diff /tmp/b.json --expect-new 1  # delta probes (double-submit detector)
+qa check                          # assert the product's invariant registry
+qa snapshot --out /tmp/b.json     # snapshot state before an action
+qa diff /tmp/b.json --expect-new 1  # delta probes (double-submit detector)
 ```
 
-Registry: **`lisk/INVARIANTS.md`** (mirrors the mobile copy — same backend).
+Delegated to the project's `product/qa_api.py` (no-op without one).
+Registry: `product/INVARIANTS.md`.
+
+## PR evidence
+
+```text
+qa publish <img.png> --feature <slug> [--caption "…"]   # → qa-assets branch + <img> tag
+```
 
 ## Design verification — screen vs Figma (on demand)
 
 ```text
-/check-figma <screen> [--strict] [--version 0.X]
+/check-figma <screen> [--strict]
 ```
 
-Registry + procedure: **`lisk/FIGMA_MAP.md`** (web Figma file; no screens
-mapped yet — the file documents how to add the first).
+Registry + procedure: the project's **`product/FIGMA_MAP.md`**.
 
 ## Playwright MCP quick reference (the agent's hands)
 
@@ -64,6 +67,7 @@ mapped yet — the file documents how to add the first).
 
 ## Process hygiene
 
-- Tester server: pid `/tmp/lisk-web-tester-next.pid`, log `/tmp/lisk-web-tester-next.log`.
-- See/kill manually: `lsof -ti tcp:3002` · `scripts/qa/qa stop`.
-- Run outputs live under `scripts/qa/runs/<timestamp>__<scope>/` (gitignored).
+- Tester server pid/log: the `/tmp/...` paths named in `target.py`
+  (namespaced per project).
+- See/kill manually: `lsof -ti tcp:<port>` · `qa stop`.
+- Run outputs live under the project's `runs/<timestamp>__<scope>/` (gitignored).
