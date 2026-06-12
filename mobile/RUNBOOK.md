@@ -78,9 +78,11 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
 A find-and-fix run that changed anything ON-SCREEN must SHOW the change in the PR
 body, not just describe it:
 - **Before/after montage per visual fix** — same screen, pre- vs post-fix, side by
-  side. `before` = the failing state you logged; `after` = the verified fix captured
-  on a **cold reload** (`qa reload`), NOT a Fast-Refresh frame — Fast-Refresh
-  screenshots can show transient clipping that isn't in shipped code.
+  side. **Capture the failing state with an archival `qa shot` when you LOG the
+  bug** — that is the before half; at Finish it's too late to recreate it.
+  `after` = the verified fix captured on a **cold reload** (`qa reload`), NOT a
+  Fast-Refresh frame — Fast-Refresh screenshots can show transient clipping
+  that isn't in shipped code.
 - **High-res source, width-constrained display.** Render the montage at full res
   (~600px/frame); **never downscale the source** (bakes in blur). Constrain only
   the DISPLAY in the PR body: `<img src="…?raw=true" width="580" />` —
@@ -93,7 +95,14 @@ body, not just describe it:
   keeps montages out of `main` AND out of the PR's Files-changed. **Never
   `git add` a PNG on the run branch** — on squash-merge that lands it in `main`.
 
-Logic-only fixes (no on-screen change) need no montage — the `## Summary` + repro suffice.
+**The montage gate is MECHANICAL, not a judgment call** — never infer
+visual-vs-logic from a fix's title or category. At Finish, for EVERY committed
+fix, compare its before/after pair: `magick compare -metric AE before.png
+after.png null:` (or view them side by side). ANY non-zero pixel diff → the
+montage is mandatory, even for an "a11y/logic" fix. Only a byte-identical pair
+(a truly non-visual fix) skips it — and those cite the a11y-tree / `qa find`
+diff as the PR evidence instead. No before shot captured = treat as differing
+(montage from the closest available state, and note the gap).
 
 ## Scopes (which surfaces to visit)
 Product-defined — the scope keywords and their surface tables live in

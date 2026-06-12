@@ -90,8 +90,10 @@ routes from the nav in the first ARIA snapshot — don't guess.
 ## PR evidence for visual fixes (host via `qa publish` — NEVER the PR branch)
 A find-and-fix run that changed anything ON-SCREEN should SHOW it in the PR body:
 - **Before/after montage per visual fix** — same screen, pre- vs post-fix, side by
-  side. `before` = the failing state you logged; `after` = the verified fix after
-  the hot reload. Build it with ImageMagick (`magick montage …`) at full res;
+  side. **Capture the failing state with an archival `qa shot` when you LOG the
+  bug** — that is the before half; `browser_take_screenshot` is in-session only
+  and leaves nothing to montage at Finish. `after` = the verified fix after the
+  hot reload. Build it with ImageMagick (`magick montage …`) at full res;
   **never downscale the source** (bakes in blur).
 - **Host it OFF the PR branch:** `qa publish <montage.png> --feature <flow>-<topic>
   [--caption "…"]`. It appends the PNG to the append-only, never-merged
@@ -101,7 +103,14 @@ A find-and-fix run that changed anything ON-SCREEN should SHOW it in the PR body
   **Never `git add` a PNG on the run branch** (on squash-merge it lands in `main`).
 - **One-line "what changed" caption above each image** so the diff reads at a glance.
 
-Logic-only fixes (no on-screen change) need no montage — `## Summary` + repro suffice.
+**The montage gate is MECHANICAL, not a judgment call** — never infer
+visual-vs-logic from a fix's title or category. At Finish, for EVERY committed
+fix, compare its before/after pair: `magick compare -metric AE before.png
+after.png null:` (or view them side by side). ANY non-zero pixel diff → the
+montage is mandatory, even for an "a11y/logic" fix. Only a byte-identical pair
+(a truly non-visual fix) skips it — and those cite the ARIA-snapshot diff as
+the PR evidence instead. No before shot captured = treat as differing (montage
+from the closest available state, and note the gap).
 
 ## HARD RULES (non-negotiable)
 - **Branch isolation:** fixes land on `qa-auto/<stamp>` only; never commit to
