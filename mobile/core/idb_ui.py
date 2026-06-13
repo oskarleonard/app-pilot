@@ -272,6 +272,13 @@ def tap_tab(udid, name):
         return False
     grp = find(udid, "Tab Bar", role="Group")
     if not grp:
+        # iOS 26 / Expo Router: tab items appear directly as Button elements in
+        # describe-all with labels like "Brain, tab, 2 of 5" — no wrapping Tab
+        # Bar group is present in the tree.  Fall back to direct label match.
+        el = find(udid, key, role="Button")
+        if el:
+            tap_point(udid, el.cx, el.cy)
+            return True
         return False
     f = grp.frame
     gx, gw = f.get("x", 0), f.get("width", 0)
