@@ -10,17 +10,16 @@ argument-hint: <mission> [wake|goal] <request> — e.g. "bug-hunt wake speed for
   EVERY mission by name, so adding a mission to the harness needs NO new command
   file here.
 
-  INSTALL (once per project): copy to <project>/.claude/commands/qa.md and set
-  ADAPTER_DIR below to this project's qa layer. That single line is the ONLY
-  per-project edit.
-    • mobile (sim) project → scripts/app-pilot/
-    • web (browser) project → scripts/app-pilot/
+  INSTALL (once per project): copy to <project>/.claude/commands/app-pilot.md and
+  set ADAPTER_DIR below to this project's app-pilot layer (`scripts/app-pilot/`).
+  That single line is the ONLY per-project edit — the engine (mobile vs web) is
+  read from the shim, so it needs no separate config.
 -->
 
 Run a **app-pilot mission** — the one named in `$ARGUMENTS` — against THIS project.
 
 **Per-project config (the one line to set at install):**
-- `ADAPTER_DIR` = `scripts/app-pilot/`   <!-- ← set to `scripts/app-pilot/` for a web project -->
+- `ADAPTER_DIR` = `scripts/app-pilot/`   <!-- same for mobile + web; the engine is read from the shim -->
 
 **Steps:**
 1. **Parse `$ARGUMENTS`:**
@@ -30,8 +29,9 @@ Run a **app-pilot mission** — the one named in `$ARGUMENTS` — against THIS p
 2. **Resolve the harness** (same chain as the `qa` shim): `$APP_PILOT_HOME` if set
    → else the first line of `~/.app-pilot` → else `~/programming/projects/app-pilot`.
    Call it `<harness>`.
-3. **Pick the engine** from `ADAPTER_DIR`: `scripts/app-pilot/` → `mobile`;
-   `scripts/app-pilot/` → `web`.
+3. **Pick the engine** by reading the shim `<ADAPTER_DIR>/app-pilot`: its `exec`
+   line points at `$H/mobile/app-pilot` (→ engine `mobile`) or `$H/web/app-pilot`
+   (→ engine `web`). The shim is the source of truth — no per-project engine config.
 4. **Verify the mission exists**, then read and execute it: if
    `<harness>/missions/<mission>.md` is missing, list `<harness>/missions/*.md`
    and STOP (don't guess a mission). Otherwise read it and run it with —
