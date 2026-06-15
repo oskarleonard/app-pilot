@@ -13,12 +13,12 @@ copy-per-project workflow where improvements died in whichever repo got them.
 ```
 app-pilot/
 ├── mobile/        # iOS-simulator engine (Expo dev-build apps; simctl + idb)
-│   ├── qa         # engine front door (invoked via a project shim)
+│   ├── app-pilot  # engine front door (invoked via a project shim)
 │   ├── core/      # Metro lifecycle, a11y tap/scroll, crash capture, run bookkeeping
 │   ├── RUNBOOK.md # generic operating procedure for the agent
 │   └── target.example.py
 ├── web/           # web engine (agent eyes/hands = the Playwright MCP)
-│   ├── qa, core/, RUNBOOK.md, target.example.py
+│   ├── app-pilot, core/, RUNBOOK.md, target.example.py
 ├── missions/      # job briefs the agent runs on the engines (bug-hunt,
 │                  #   scenario-exec, ... — schema in missions/_format.md)
 ├── common/        # shared: publish.py (app-pilot-assets) + targetkit.py (target machinery)
@@ -36,7 +36,7 @@ project's qa dir (`scripts/app-pilot/` for mobile, `scripts/app-pilot/` for web)
 |---|---|---|
 | **Pin** | `target.py` (+ gitignored `target.local`) — sim/port/bundle/mode env, server cmd | yes |
 | **Ground truth & product brain** | `product/` — `app_pilot_api.py` (`app-pilot check/snapshot/diff`), `INVARIANTS.md`, `FIGMA_MAP.md`, `RUNBOOK.md` addendum (modes, rails, scopes) | no |
-| **Project commands** | `ext/<name>{,.py,.sh}` — any extra subcommand (`qa <name>`), e.g. an autoplay layer for timed gameplay | no |
+| **Project commands** | `ext/<name>{,.py,.sh}` — any extra subcommand (`app-pilot <name>`), e.g. an autoplay layer for timed gameplay | no |
 | **Output** | `runs/` (gitignored) | auto |
 
 `product/app_pilot_api.py` owns *whatever* the project's ground truth is — a local
@@ -81,6 +81,47 @@ If you cloned elsewhere: `echo /path/to/app-pilot > ~/.app-pilot`.
 
 PORTING.md has the full recipe plus the empirical gotchas that cost a day
 each if rediscovered.
+
+## Quickstart — driving it
+
+Two ways to operate a project once it's onboarded.
+
+**1. Missions (the agent is the brain).** A project installs a ~10-line launcher
+at `.claude/commands/app-pilot.md`; invoke missions through it:
+
+```
+/app-pilot <mission> [wake|goal] <request>
+```
+
+| Mission | What it does |
+|---|---|
+| `bug-hunt` | Drives screens/flows on the live app; logs navigation/layout/crash/interaction bugs. `report-only`, or fix mode (fixes + opens a PR). |
+| `scenario-exec` | Executes a scripted scenario corpus, report-only. |
+| `feature-dev` | Builds a feature from a spec (code-producing). |
+| `improvement` | Works an improvement backlog (code-producing). |
+
+`wake` (agent self-paces via its own scheduling) or `goal` (you paste a `/goal`
+line) selects the driver — default `wake`. Examples:
+
+```
+/app-pilot bug-hunt report-only <scope> for 30m    # find bugs, no code changes
+/app-pilot bug-hunt wake <scope> for 1h             # autonomous, self-paced
+/app-pilot scenario-exec report-only <selection>    # run a scripted corpus
+/app-pilot improvement report-only <backlog-path>   # triage a backlog
+```
+
+**2. Raw engine verbs (the agent's eyes & hands).** Run the project shim
+(`scripts/app-pilot/app-pilot <verb>`) directly for ad-hoc work — the agent uses
+these under the hood. `app-pilot help` lists them all; run `app-pilot doctor` first.
+
+- **Lifecycle:** `doctor` · `serve` · `health` · `status` · `recover` · `reload` · `logs` · `crashes` · `stop`
+- **Inspect / drive:** `tree` · `shot <label>` · `tap` · `type` · `scroll` · `find` · `target`
+- **Ground truth:** `check` (assert the project's invariants) · `snapshot`/`diff` (state deltas around an action)
+- **Evidence:** `publish` (host a QA screenshot off-branch for a PR)
+
+A project can add its own named shims next to the launcher (e.g. a Figma
+fidelity check, or a watchdog that re-fires a loop on a cron) — but the launcher
+already reaches every mission, so a new mission needs no new command file.
 
 ## Rules of the repo
 
