@@ -51,7 +51,16 @@ steps), **Driver: wake / Driver: goal** (pacing specifics), **Watchdog**.
 
 ## Current missions
 
-- `bug-hunt.md` — explore, find bugs, (optionally) fix → PR. The original
-  QA-tester loop.
-- `scenario-exec.md` — execute a predefined scenario corpus; verdict per
-  scenario; write the run log back. No code changes.
+Distinguished by what decides the work and what the engine is FOR:
+
+- `bug-hunt.md` — **explore** the running app to DISCOVER unknown bugs;
+  (optionally) fix the clear ones → PR. The original QA-tester loop; the engine
+  is the eyes that find defects.
+- `scenario-exec.md` — **regression-verify** a predefined scenario corpus; one
+  verdict per scenario; write the run log back. No code changes; the corpus
+  decides what, the engine drives it.
+- `feature-dev.md` — **build** ONE feature from a spec; prove each acceptance
+  criterion live (the engine is the proof gate) → PR. Code-producing.
+- `improvement.md` — **triage + work** a KNOWN backlog of non-bug improvements
+  (paper cuts, tech debt, perf, a11y); do the safe ones behavior-preserving,
+  defer every owner-decision → PR. Code-producing.
