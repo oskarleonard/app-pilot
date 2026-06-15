@@ -1,7 +1,7 @@
 """Locate the shared app-pilot and expose its helper lib (targetkit).
 
 Installed per project next to target.py — copy from app-pilot/templates/,
-never edit. Resolution mirrors the qa shim: $APP_PILOT_HOME -> ~/.app-pilot
+never edit. Resolution mirrors the app-pilot shim: $APP_PILOT_HOME -> ~/.app-pilot
 (one-line path file) -> ~/programming/projects/app-pilot.
 """
 import os

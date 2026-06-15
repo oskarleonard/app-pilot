@@ -19,7 +19,7 @@ if [ "$cmd" = "help" ] || [ "$cmd" = "--help" ] || [ "$cmd" = "-h" ]; then
   cat <<'EOF'
 app-pilot (mobile) — AI eyes & hands on an iOS simulator (pin: the project's target.py)
 
-Engine lives in app-pilot/mobile; run it via your project's scripts/app-pilot/qa
+Engine lives in app-pilot/mobile; run it via your project's scripts/app-pilot/app-pilot
 shim. Project-specific layers next to the shim: target.py (pin) · product/
 (ground truth, Figma map, rails) · ext/ (extra commands) · runs/ (output).
 
