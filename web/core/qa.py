@@ -9,7 +9,7 @@ script provides what the MCP doesn't:
     are auditable and survive context compaction
   - `shot`: an archival full-page screenshot of any app PATH into the run
     folder, via the Playwright CLI in a fresh browser context. Because mock
-    modes need no login, app states are URL-addressable — `qa shot home /`
+    modes need no login, app states are URL-addressable — `app-pilot shot home /`
     captures the same screen a teammate would see. (In staging mode a fresh
     context only sees the login page; use the MCP's in-session screenshot
     instead.)
@@ -27,15 +27,15 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import target  # noqa: E402
 
-RUNS = os.path.join(os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE), "runs")
+RUNS = os.path.join(os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE), "runs")
 CURRENT = os.path.join(RUNS, ".current")
 
 
 def _playwright_bin():
-    d = os.environ.get("QA_PROJECT_QA_DIR") or HERE
+    d = os.environ.get("APP_PILOT_PROJECT_DIR") or HERE
     for _ in range(6):
         for candidate in (
             os.path.join(d, "node_modules", ".bin", "playwright"),

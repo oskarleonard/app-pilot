@@ -1,4 +1,4 @@
-# sim-qa — simulator eyes & hands for the AI (mobile engine)
+# app-pilot (mobile) — simulator eyes & hands for the AI (mobile engine)
 
 Lets the AI **see and drive an iOS simulator**: screenshot → read the a11y
 tree → tap by accessibility label → drive flows. The human says *"QA the send
@@ -15,13 +15,13 @@ apps.
 ```bash
 brew tap facebook/fb && brew install idb-companion        # native daemon
 python3 -m venv ~/.idb-venv && ~/.idb-venv/bin/pip install fb-idb   # idb CLI
-<project>/scripts/sim-qa/qa doctor                        # checks everything;
+<project>/scripts/app-pilot/app-pilot doctor                        # checks everything;
                                                           # every FAIL prints its fix
 ```
 
 > `idb` will NOT be on your PATH (`zsh: command not found: idb` is expected) —
 > the venv keeps it isolated and the tooling calls it by absolute path
-> (pinned in the project's `target.py`). `qa doctor` verifies the location.
+> (pinned in the project's `target.py`). `app-pilot doctor` verifies the location.
 
 `doctor` also resolves the project's simulator: the target device
 (`DEVICE_NAME` in `target.py`) is discovered on first run — preferring a
@@ -32,11 +32,11 @@ so the choice is stable per machine forever after. To retarget: delete
 ## How an onboarded project looks
 
 ```
-<project>/scripts/sim-qa/
+<project>/scripts/app-pilot/
 ├── qa                   # shim → this engine (templates/shim-mobile)
 ├── target.py            # the project's pin (sim / port / bundle / mode env)
 ├── target.local         # per-machine UDID pin (gitignored, auto-written)
-├── product/             # optional: qa_api.py + INVARIANTS.md + FIGMA_MAP.md
+├── product/             # optional: app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md
 │                        #           + RUNBOOK.md addendum (modes/rails/scopes)
 ├── ext/                 # optional: project-specific subcommands
 └── runs/                # per-run output (gitignored)
@@ -53,15 +53,15 @@ Metro keeps its port — they all coexist. The tester never kills Metro on
 another port or drives another sim.
 
 The tester **repoints the installed dev app** to its own Metro via a
-dev-client deep link. To get your own dev session back afterwards: `qa stop`,
+dev-client deep link. To get your own dev session back afterwards: `app-pilot stop`,
 then start your own Metro and reopen the app from it.
 
 ## QA loop — model-driven, compaction-proof
 
 - `core/qa.py` = deterministic mechanics + logging (cheap, no model).
 - The model decides what to test, VIEWS select screenshots, writes findings,
-  updates the journal — paced by `/qa-tester-wake` (ScheduleWakeup) or
-  `/qa-tester` (/goal), defined per project in `.claude/commands/`.
+  updates the journal — paced by `/app-pilot` (ScheduleWakeup) or
+  `/app-pilot` (/goal), defined per project in `.claude/commands/`.
 - **State lives on disk** (`runs/<id>/journal.md`), re-read each iteration, so
   a mid-run context compaction is survivable. See RUNBOOK.md.
 

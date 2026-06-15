@@ -1,0 +1,107 @@
+#!/bin/bash
+# app-pilot (mobile) engine front door (harness-resident — see repo README).
+# Always invoked through a PROJECT's scripts/app-pilot/app-pilot shim, which exports
+# APP_PILOT_PROJECT_DIR = the project's qa dir. That dir layers everything
+# project-specific over this engine:
+#   target.py      pinned sim/port/bundle/mode        (committed, required)
+#   target.local   per-machine sim UDID pin           (gitignored, auto-written)
+#   product/       ground truth + design map + rails  (optional)
+#   ext/           project-specific subcommands       (optional)
+#   runs/          per-run output                     (gitignored)
+set -euo pipefail
+H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON="$(cd "$H/.." && pwd)/common"
+
+cmd="${1:-help}"
+if [ "$#" -gt 0 ]; then shift; fi
+
+if [ "$cmd" = "help" ] || [ "$cmd" = "--help" ] || [ "$cmd" = "-h" ]; then
+  cat <<'EOF'
+app-pilot (mobile) — AI eyes & hands on an iOS simulator (pin: the project's target.py)
+
+Engine lives in app-pilot/mobile; run it via your project's scripts/app-pilot/qa
+shim. Project-specific layers next to the shim: target.py (pin) · product/
+(ground truth, Figma map, rails) · ext/ (extra commands) · runs/ (output).
+
+Metro / app lifecycle:
+  app-pilot doctor             first-time machine check — every FAIL prints its fix
+  app-pilot serve              take over Metro on the tester port (owned + logged)
+  app-pilot health             metro up? backend up? app vs launcher? idb companion?
+  app-pilot status             what holds the port, tester pid, log sizes
+  app-pilot recover            reconnect app; restart Metro if down; respawn idb companion
+  app-pilot reload             cold-restart the app (LAST-resort recovery)
+  app-pilot logs [N]           last N lines of owned Metro log (default 40)
+  app-pilot crashes [N]        crash-pattern hits from the OS log stream (default 20)
+  app-pilot stop               kill tester Metro + crash stream (this port only)
+
+Run bookkeeping + eyes & hands:
+  app-pilot init --scope S [--driver wake|goal] [--label L]   start a run (journal/findings)
+  app-pilot shot <label>       screenshot into the current run
+  app-pilot tree               dump labelled a11y elements (what's tappable)
+  app-pilot tap --label "AX" [--role Button] [--force] | --tab <name> | --frac fx,fy
+                        (--role disambiguates collisions; refuses off-viewport targets)
+  app-pilot type <text> [--label L] [--role R] [--clear] [--enter]   type into a field
+  app-pilot scroll [down|up] [--amount 0.35]   scroll native lists (NOT RNGH gestures)
+  app-pilot note <text>        append a finding to the current run
+  app-pilot act <text>         append a line to actions.log
+  app-pilot find <label>       locate an element without tapping
+  app-pilot companion [ensure] idb companion check / respawn
+  app-pilot target [--udid|--port|--bundle|--mode|--window]   print pinned config values
+
+PR evidence (hosts images OFF the PR branch — see RUNBOOK "PR evidence"):
+  app-pilot publish <img> --feature S [--name F] [--caption C] [--width N]
+                        host a QA image on the hidden app-pilot-assets store ref (no branch, no banner)
+
+Ground truth (delegated to the project's product/app_pilot_api.py when present):
+  app-pilot check              assert the project's invariant registry (exit 1 on fail)
+  app-pilot snapshot --out f   snapshot state before a risky action
+  app-pilot diff f [--expect-new N]   delta probes vs a snapshot
+
+Anything else resolves against the project's ext/ dir (e.g. an autoplay layer).
+Modes: set per project in target.py (via MODE_ENV).
+EOF
+  exit 0
+fi
+
+PROJ="${APP_PILOT_PROJECT_DIR:-}"
+if [ -z "$PROJ" ] || [ ! -f "$PROJ/target.py" ]; then
+  echo "app-pilot: APP_PILOT_PROJECT_DIR not set or no target.py in it — run via your project's scripts/app-pilot/app-pilot shim" >&2
+  exit 1
+fi
+export APP_PILOT_PROJECT_DIR="$PROJ"
+
+case "$cmd" in
+  serve|recover|reload|health|doctor|status|stop)
+    exec python3 "$H/core/devserver.py" "$cmd" "$@" ;;
+  logs)
+    exec python3 "$H/core/devserver.py" metrolog "${1:-40}" ;;
+  crashes)
+    exec python3 "$H/core/devserver.py" crashes "${1:-20}" ;;
+  init|shot|tree|tap|type|scroll|note|act)
+    exec python3 "$H/core/qa.py" "$cmd" "$@" ;;
+  publish)
+    exec python3 "$COMMON/publish.py" "$@" ;;
+  check|snapshot|diff)
+    for api in "$PROJ/product/app_pilot_api.py" "$PROJ/product/qa_api.py"; do
+      [ -f "$api" ] && exec python3 "$api" "$cmd" "$@"
+    done
+    echo "app-pilot $cmd: no ground-truth layer in this project (no product/app_pilot_api.py) — nothing to assert"
+    exit 0 ;;
+  find)
+    exec python3 "$H/core/idb_ui.py" find "$@" ;;
+  companion)
+    exec python3 "$H/core/idb_ui.py" companion "$@" ;;
+  target)
+    exec python3 "$PROJ/target.py" "$@" ;;
+  *)
+    for cand in "$PROJ/ext/$cmd" "$PROJ/ext/$cmd.py" "$PROJ/ext/$cmd.sh"; do
+      [ -f "$cand" ] || continue
+      case "$cand" in
+        *.py) exec python3 "$cand" "$@" ;;
+        *.sh) exec bash "$cand" "$@" ;;
+        *)    exec "$cand" "$@" ;;
+      esac
+    done
+    echo "app-pilot: unknown command '$cmd' — run 'app-pilot help' (project commands live in ext/)" >&2
+    exit 1 ;;
+esac

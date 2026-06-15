@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""OS-level crash-log capture for sim-qa.  [DEV TOOL]
+"""OS-level crash-log capture for app-pilot.  [DEV TOOL]
 
 Streams the iOS unified log for the app + React Native subsystem to target.CRASHLOG
 via `xcrun simctl spawn <udid> log stream`, so red-box / native-module / fatal
@@ -13,7 +13,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # target.py lives one level up (project/core boundary).
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import target  # noqa: E402
 
 # The process-image hint comes from target.py so this file stays portable

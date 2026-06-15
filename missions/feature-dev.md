@@ -51,14 +51,14 @@ Layered on top (this mission commits code, so they are strict):
   move to the next.
 - **Live-proof gate (the reason this runs on the engine):** verify the EXACT
   final commit through the REAL changed path with REAL artifacts — drive the
-  feature on the tester and capture evidence per criterion (`qa tree`/`qa shot`
+  feature on the tester and capture evidence per criterion (`app-pilot tree`/`app-pilot shot`
   on mobile; ARIA snapshot on web). Static checks (the adapter's
   `tsc`/test/lint/build) are necessary but NOT sufficient — a green suite with
   no live observation is an unverified criterion.
 - **First contact with an unscanned repo = report-only:** derive/read the spec,
   plan, name the branch — but make no commits until granted (Options `mode`).
-- **Money/destructive-flow audit** (same as bug-hunt): `qa shot` before and
-  `qa act CONFIRM <what>` on every Confirm/Send/Approve/Submit the feature
+- **Money/destructive-flow audit** (same as bug-hunt): `app-pilot shot` before and
+  `app-pilot act CONFIRM <what>` on every Confirm/Send/Approve/Submit the feature
   introduces; forbidden outright in a staging/real mode. Product rails name the
   app's no-go actions.
 - **The author does not solely grade the work.** Done-criteria are objective
@@ -94,16 +94,16 @@ Layered on top (this mission commits code, so they are strict):
 
 ## 3 · Set up
 - Engine preflight per bug-hunt §2: read `target.py` (state the sim/port/URL +
-  tester mode); `qa serve` → `qa health` (off → `qa recover`); **never build
+  tester mode); `app-pilot serve` → `app-pilot health` (off → `app-pilot recover`); **never build
   against a dead backend.**
 - **Require a clean `git status`** — dirty → STOP and ask the human to
   commit/stash. Compute `STAMP=$(date +%Y%m%d-%H%M%S)` ONCE; create + checkout
   `feat/<slug>-<STAMP>` off `base`; record `base` for the PR.
-- `qa init --scope <slug> --driver <wake|goal> --label <STAMP>` → seed
+- `app-pilot init --scope <slug> --driver <wake|goal> --label <STAMP>` → seed
   `runs/<id>/journal.md`: the criteria checklist, tester mode, deadline, base
   branch, the **write-fence**, HARD RULES (incl. user constraints), and the
   build plan. Seed `build-log.md` with the empty criteria table —
-  `build-log.md` is mission-owned, write verdicts to it directly; `qa note` /
+  `build-log.md` is mission-owned, write verdicts to it directly; `app-pilot note` /
   `findings.md` is for incidental defects you trip over, not the criteria.
 - One line before building: **mode · feature slug · #criteria · deadline ·
   target · tester mode** + the caveat that the loop runs only while this
@@ -113,19 +113,19 @@ Layered on top (this mission commits code, so they are strict):
 Re-read `runs/<id>/journal.md` FIRST every iteration (compaction-proof). Then:
 STEP0 stop-check — exit to §5 on ANY of: deadline reached · all criteria
 terminal (PASS/BLOCKED) →
-STEP1 `qa health` (down → `qa recover`) →
+STEP1 `app-pilot health` (down → `app-pilot recover`) →
 STEP2 pick the next un-met criterion; implement the **smallest** change that
 satisfies it (the spec is the ceiling, not a floor to gold-plate) →
 STEP3 run the adapter's static checks (`product/RUNBOOK.md` names them —
 `tsc`/test/lint/build); red → fix or revert (≤2 attempts, then BLOCKED) →
 STEP4 **live-proof:** drive the real path on the tester, observe the criterion
-holding, `qa shot <criterion-label>`; mark **PASS** (with evidence path) or
+holding, `app-pilot shot <criterion-label>`; mark **PASS** (with evidence path) or
 **BLOCKED** (repro + reason) in `build-log.md` immediately →
 STEP5 commit the increment (reviewable, one concern per commit) →
 STEP6 update the journal (Done / Remaining / Next).
 
 ## 5 · Finish (Done-criteria met)
-- **Ground-truth sweep:** `qa check` (adapter's invariants; absent → no-op).
+- **Ground-truth sweep:** `app-pilot check` (adapter's invariants; absent → no-op).
   Each failure is a finding folded into the build log — a regression here
   blocks the PR until fixed or reverted.
 - Append the per-criterion verdict table + a final `## Summary` (criteria

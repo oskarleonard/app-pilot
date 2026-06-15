@@ -68,7 +68,7 @@ def resolve_udid(device_name, env_var, near):
     udid = _discover_udid(device_name)
     if not udid:
         sys.exit(
-            f"sim-qa: no simulator named {device_name!r} found.\n"
+            f"app-pilot: no simulator named {device_name!r} found.\n"
             f"Create one (Xcode > Devices & Simulators), or pin one explicitly:\n"
             f"  echo <UDID> > {pin_path}   (or export {env_var}=<UDID>)"
         )

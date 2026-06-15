@@ -26,20 +26,20 @@ Mission-level reminders (the ones that gate every round):
 - **Triage:** fix clear/localized frontend bugs; **log + skip** ambiguous,
   architectural, native/needs-rebuild, third-party-auth/wallet, or
   new-dependency ones (the engine RUNBOOK's Fix flow defines the classes).
-- **Money/destructive-flow audit:** `qa shot` BEFORE and `qa act CONFIRM
+- **Money/destructive-flow audit:** `app-pilot shot` BEFORE and `app-pilot act CONFIRM
   <what>` on EVERY Confirm/Send/Approve/Submit interaction; in a
   staging/real mode those interactions are FORBIDDEN. Product rails name the
   app's specific no-go actions (e.g. sign-out under mock auth).
-- **(mobile)** Tap by a11y label (`qa tree` first); an unlabelled interactive
+- **(mobile)** Tap by a11y label (`app-pilot tree` first); an unlabelled interactive
   element is itself a finding. Sheets: dismiss via labelled buttons or the
-  product's tester-escape; verify dismissal via `qa tree`.
+  product's tester-escape; verify dismissal via `app-pilot tree`.
 - **(web)** Console + network sweep every iteration — a clean screen with a
   500 in the log is a finding. Navigate by ARIA roles/names, never
   coordinates; an unaddressable element is itself a finding.
-- **Ground-truth sweep before Finish:** `qa check` (delegates to the
-  adapter's `product/qa_api.py`; absent → no-op). Exit 1 = one logged finding
+- **Ground-truth sweep before Finish:** `app-pilot check` (delegates to the
+  adapter's `product/app_pilot_api.py`; absent → no-op). Exit 1 = one logged finding
   per failed invariant — include the full output in findings. Bracket risky
-  actions with `qa snapshot` / `qa diff --expect-new N` (double-submit probe).
+  actions with `app-pilot snapshot` / `app-pilot diff --expect-new N` (double-submit probe).
 - **Active bug-hunt** — follow the engine RUNBOOK's checklist (forms,
   cross-path consistency, empty-vs-populated, settings→runtime,
   double-submit): 1–2 probes per round. Don't end early — time remaining
@@ -72,21 +72,21 @@ Mission-level reminders (the ones that gate every round):
 ## 2 · Set up
 - Read the adapter's `target.py`; state which sim/port/URL + tester mode this
   drives (only that one).
-- **Preflight:** `qa health` must be green. If the backend is DOWN, STOP and
+- **Preflight:** `app-pilot health` must be green. If the backend is DOWN, STOP and
   tell the user the start command (health prints the adapter's hint). Do NOT
   start a loop against a dead backend — every screen becomes a TEST_ARTIFACT.
 - **Compute the stamp ONCE:** `STAMP=$(date +%Y%m%d-%H%M%S)`; reuse it for
-  the branch (`qa-auto/<scope>-<STAMP>`) and `qa init --label`.
+  the branch (`qa-auto/<scope>-<STAMP>`) and `app-pilot init --label`.
 - **(fix mode)** require a clean `git status` — dirty → STOP and ask the
   human to commit/stash. Create + checkout `qa-auto/<scope>-<STAMP>` off the
   current branch; note the base branch for the PR.
-- `qa serve` → `qa health` (anything off → `qa recover`).
+- `app-pilot serve` → `app-pilot health` (anything off → `app-pilot recover`).
   **(mobile)** after `serve`, give the cold bundle a moment: `sleep 5`, or
-  loop on `qa tree` until a known top-level label appears.
-  **(web)** `browser_navigate` to `qa target --url`; take the first ARIA
+  loop on `app-pilot tree` until a known top-level label appears.
+  **(web)** `browser_navigate` to `app-pilot target --url`; take the first ARIA
   snapshot to build the nav map (MCP missing → STOP; setup is in the
   project's qa README).
-- `qa init --scope <scope> --driver <wake|goal> --label <STAMP>` → run dir
+- `app-pilot init --scope <scope> --driver <wake|goal> --label <STAMP>` → run dir
   `runs/<auto-ts>__<scope>__<driver>-<STAMP>/`; seed `runs/<id>/journal.md`
   per the engine RUNBOOK (mode, tester mode, deadline + cap, base branch,
   HARD RULES incl. user constraints, nav-map, plan).
@@ -97,13 +97,13 @@ Mission-level reminders (the ones that gate every round):
 ## Iteration body (both drivers — engine RUNBOOK §6)
 Re-read `runs/<id>/journal.md` FIRST (durable state). Then:
 STEP0 stop-check (`date` + shot count vs Done-criteria; at bound → §4) →
-STEP1 `qa health` (down → `qa recover`) →
-STEP2 **(mobile)** `qa logs` + `qa crashes` / **(web)**
+STEP1 `app-pilot health` (down → `app-pilot recover`) →
+STEP2 **(mobile)** `app-pilot logs` + `app-pilot crashes` / **(web)**
 `browser_console_messages` + `browser_network_requests` (real errors,
 crash-pattern hits, swallowed 4xx/5xx = findings) →
-STEP3 read the latest screenshot/snapshot → assess → `qa note` any bug →
+STEP3 read the latest screenshot/snapshot → assess → `app-pilot note` any bug →
 STEP4 (fix mode) if fixable → the engine RUNBOOK's **Fix flow** →
-STEP5 navigate deeper (engine + product rules) → `qa shot <label>` →
+STEP5 navigate deeper (engine + product rules) → `app-pilot shot <label>` →
 STEP6 update the journal (Tested / Nav map / Next steps).
 
 ## Driver: wake (`ScheduleWakeup` self-pacing)
@@ -152,8 +152,8 @@ one-line summary (the overlay covers liveness). CI note: `/goal` works under
 pipeline becomes viable.
 
 ## Watchdog (`--driven`)
-A fixed-interval `/loop` (front door: the project's `/qa-tester-watchdog`,
-composing `/loop 3m /qa-tester-wake <args> --driven`) re-fires the wake shim
+A fixed-interval `/loop` (front door: the project's `/app-pilot-watchdog`,
+composing `/loop 3m /app-pilot <args> --driven`) re-fires the wake shim
 on a timer EVEN IF an iteration crashed — that is the point. In this mode:
 - **Never call `ScheduleWakeup`** — two pacemakers double-fire.
 - At setup: `CronList`, find the recurring job whose prompt is this
@@ -167,7 +167,7 @@ on a timer EVEN IF an iteration crashed — that is the point. In this mode:
 - Footer "Next wake" row becomes `harness-paced (fixed interval)`.
 
 ## 4 · Finish (Done-criteria met)
-- **Ground-truth sweep first:** `qa check` — each failure is a finding;
+- **Ground-truth sweep first:** `app-pilot check` — each failure is a finding;
   include the full output in findings.
 - Append the final `## Summary` section to `runs/<id>/findings.md`.
 - **Pre-PR quality gate (fix mode, when commits exist) — BEFORE pushing:**

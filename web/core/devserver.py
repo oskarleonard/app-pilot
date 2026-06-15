@@ -21,12 +21,12 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import target  # noqa: E402
 
 
 def _find_repo():
-    d = os.environ.get("QA_PROJECT_QA_DIR") or HERE
+    d = os.environ.get("APP_PILOT_PROJECT_DIR") or HERE
     for _ in range(6):
         if os.path.exists(os.path.join(d, "package.json")):
             return d
@@ -128,7 +128,7 @@ def cmd_serve(_):
 def cmd_health(_):
     print(f"target: {target.APP_URL} mode={target.MODE}")
     server = server_ok()
-    print(f"server: {'UP (200)' if server else 'DOWN — run `qa serve`'}")
+    print(f"server: {'UP (200)' if server else 'DOWN — run `app-pilot serve`'}")
     backend = True
     if target.MODE == "local" and _BACKEND_URL:
         backend = backend_ok()

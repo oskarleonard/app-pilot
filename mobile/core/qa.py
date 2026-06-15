@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-sim-qa — autonomous QA-loop tooling for an iOS simulator app.  [DEV TOOL]
+app-pilot (mobile) — autonomous QA-loop tooling for an iOS simulator app.  [DEV TOOL]
 
 The *mechanical + bookkeeping* layer for a model-driven QA loop. Creates a
 versioned run folder, drives the sim (screenshot/tap), and logs every action so
@@ -37,14 +37,14 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # for sibling core modules (common, idb_ui)
 # target.py lives one level up (project/core boundary).
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import common  # noqa: E402
 import idb_ui  # noqa: E402
 import target  # noqa: E402
 
-# Run output lives at scripts/sim-qa/runs/ (NOT core/runs/ — an earlier version
+# Run output lives at scripts/app-pilot/runs/ (NOT core/runs/ — an earlier version
 # anchored to core/ by accident and grew two runs dirs).
-RUNS = os.path.join(os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE), "runs")
+RUNS = os.path.join(os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE), "runs")
 CURRENT = os.path.join(RUNS, ".current")
 
 
@@ -166,7 +166,7 @@ def cmd_tap(args):
         if blocker:
             _log(run, "actions.log", f"TAP label={args.label!r} REFUSED: {blocker}{note}")
             sys.exit(f"refusing to tap {args.label!r}: {blocker} — "
-                     "`qa scroll` first, or pass --force")
+                     "`app-pilot scroll` first, or pass --force")
         idb_ui.tap_point(target.UDID, el.cx, el.cy)
         _log(run, "actions.log", f"TAP label={args.label!r} -> {el}{note}")
         print(f"tapped label {args.label!r} -> {el}")
@@ -201,7 +201,7 @@ def cmd_type(args):
         el = idb_ui.tap_label(target.UDID, args.label, role=args.role)
         if el is None:
             _log(run, "actions.log", f"TYPE focus={args.label!r} -> None{note}")
-            sys.exit(f"no element labelled {args.label!r} to focus (try `qa tree`)")
+            sys.exit(f"no element labelled {args.label!r} to focus (try `app-pilot tree`)")
         time.sleep(0.4)  # let the keyboard animate up before sending keys
     if args.clear:
         idb_ui.press_key(target.UDID, 42, times=_CLEAR_BACKSPACES)  # 42 = backspace
@@ -213,7 +213,7 @@ def cmd_type(args):
     if failed:
         _log(run, "actions.log", f"TYPE {args.text!r}{into} -> {failed} char(s) FAILED{note}")
         sys.exit(f"idb failed to deliver {failed}/{len(args.text)} char(s) — "
-                 "check `qa health` (idb companion?)")
+                 "check `app-pilot health` (idb companion?)")
     _log(run, "actions.log", f"TYPE {args.text!r}{into}{cleared}{note}")
     print(f"typed {args.text!r}{into}{cleared}")
 

@@ -1,5 +1,5 @@
 ---
-description: One generic front door for ALL qa-harness missions (bug-hunt, scenario-exec, feature-dev, improvement, …). Reads <harness>/missions/<name>.md and runs it. Copy ONCE per project — replaces the per-mission, per-driver command-file sprawl. claude -p / Remote Control compatible.
+description: One generic front door for ALL app-pilot missions (bug-hunt, scenario-exec, feature-dev, improvement, …). Reads <harness>/missions/<name>.md and runs it. Copy ONCE per project — replaces the per-mission, per-driver command-file sprawl. claude -p / Remote Control compatible.
 argument-hint: <mission> [wake|goal] <request> — e.g. "bug-hunt wake speed for 1h", "feature-dev goal build the X screen per specs/x.md", "improvement report-only top 3"
 ---
 
@@ -13,25 +13,25 @@ argument-hint: <mission> [wake|goal] <request> — e.g. "bug-hunt wake speed for
   INSTALL (once per project): copy to <project>/.claude/commands/qa.md and set
   ADAPTER_DIR below to this project's qa layer. That single line is the ONLY
   per-project edit.
-    • mobile (sim) project → scripts/sim-qa/
-    • web (browser) project → scripts/qa/
+    • mobile (sim) project → scripts/app-pilot/
+    • web (browser) project → scripts/app-pilot/
 -->
 
-Run a **qa-harness mission** — the one named in `$ARGUMENTS` — against THIS project.
+Run a **app-pilot mission** — the one named in `$ARGUMENTS` — against THIS project.
 
 **Per-project config (the one line to set at install):**
-- `ADAPTER_DIR` = `scripts/sim-qa/`   <!-- ← set to `scripts/qa/` for a web project -->
+- `ADAPTER_DIR` = `scripts/app-pilot/`   <!-- ← set to `scripts/app-pilot/` for a web project -->
 
 **Steps:**
 1. **Parse `$ARGUMENTS`:**
    - **mission** = the first token (e.g. `bug-hunt`, `scenario-exec`, `feature-dev`, `improvement`).
    - **driver** = the next token **iff** it is exactly `wake` or `goal` (else default `wake`); strip it from the request.
    - **request** = the remaining text (scope, bound, constraints) — passed through verbatim.
-2. **Resolve the harness** (same chain as the `qa` shim): `$QA_HARNESS_DIR` if set
-   → else the first line of `~/.qa-harness` → else `~/programming/projects/qa-harness`.
+2. **Resolve the harness** (same chain as the `qa` shim): `$APP_PILOT_HOME` if set
+   → else the first line of `~/.app-pilot` → else `~/programming/projects/app-pilot`.
    Call it `<harness>`.
-3. **Pick the engine** from `ADAPTER_DIR`: `scripts/sim-qa/` → `mobile`;
-   `scripts/qa/` → `web`.
+3. **Pick the engine** from `ADAPTER_DIR`: `scripts/app-pilot/` → `mobile`;
+   `scripts/app-pilot/` → `web`.
 4. **Verify the mission exists**, then read and execute it: if
    `<harness>/missions/<mission>.md` is missing, list `<harness>/missions/*.md`
    and STOP (don't guess a mission). Otherwise read it and run it with —
@@ -46,7 +46,7 @@ Notes:
 - This replaces N missions × 2 drivers of per-project command files with one
   file. Trade-off: the slash-command `description`/`argument-hint` are generic
   rather than mission-specific — worth it for zero drift. A project that wants a
-  named shortcut for a hot path (e.g. `/qa-tester`) can still keep a thin
+  named shortcut for a hot path (e.g. `/app-pilot`) can still keep a thin
   one-liner that delegates here.
 - The mission itself owns bounds, rails, and the driver behavior — this launcher
   only routes `mission + driver + adapter dir + request` to it (the invocation

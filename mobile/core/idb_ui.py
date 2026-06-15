@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""idb-based accessibility helpers for sim-qa.  [DEV TOOL]
+"""idb-based accessibility helpers for app-pilot.  [DEV TOOL]
 
 Reads the iOS accessibility tree via idb (Facebook's iOS Development Bridge) so we
 can find + tap UI elements by their accessibilityLabel instead of guessing pixel
@@ -34,7 +34,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 # target.py lives one level up (the project/core boundary — see PORTING.md).
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import target  # noqa: E402
 
 IDB = getattr(target, "IDB", None) or os.path.expanduser("~/.idb-venv/bin/idb")

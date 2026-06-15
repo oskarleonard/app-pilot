@@ -1,4 +1,4 @@
-"""Shared primitives for the sim-qa tester. Stdlib only.
+"""Shared primitives for the app-pilot tester. Stdlib only.
 
 Vision: `xcrun simctl io <udid> screenshot` + a center crop (`sips`) decoded
 by a tiny PNG reader.
@@ -29,11 +29,11 @@ import subprocess
 import sys
 import zlib
 
-# `target.py` lives in the PROJECT's qa dir (e.g. scripts/sim-qa/), NOT in the
+# `target.py` lives in the PROJECT's qa dir (e.g. scripts/app-pilot/), NOT in the
 # harness — that's the boundary between the portable engine and per-project
-# config. The project's shim exports QA_PROJECT_QA_DIR; a vendored copy of
+# config. The project's shim exports APP_PILOT_PROJECT_DIR; a vendored copy of
 # this folder inside a project still works via the one-level-up fallback.
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import target  # noqa: E402
 
 _QUIET = {"stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL}

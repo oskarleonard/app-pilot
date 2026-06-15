@@ -36,7 +36,7 @@ On top of them:
   logged verdict + evidence, never a fix-in-place. (Bugs worth fixing →
   hand to the bug-hunt mission afterwards.)
 - **No verdict without observed evidence**: PASS requires every Expected
-  assertion observed (screenshot per assertion via `qa shot`); FAIL requires
+  assertion observed (screenshot per assertion via `app-pilot shot`); FAIL requires
   the failing observation + a minimal repro note. Ambiguity (precondition
   impossible, role unavailable, flow blocked by the environment) is
   SKIPPED(reason) — never a guessed verdict.
@@ -46,9 +46,9 @@ On top of them:
 - **Negative cases count**: a scenario's "Negative cases" are assertions too
   — probe them before issuing PASS.
 - Money/destructive steps follow the engine's universal audit
-  (`qa shot` + `qa act CONFIRM <what>`) and the adapter's mode rails; where
+  (`app-pilot shot` + `app-pilot act CONFIRM <what>`) and the adapter's mode rails; where
   the adapter has a ground-truth layer, bracket write-steps with
-  `qa snapshot` / `qa diff --expect-new N`.
+  `app-pilot snapshot` / `app-pilot diff --expect-new N`.
 - The run journal (`runs/<id>/journal.md`) is the durable state: scenario
   queue, current position, verdicts so far — re-read it every iteration
   (compaction-proof).
@@ -68,8 +68,8 @@ On top of them:
    `platform_field`. Print the resulting queue (IDs + titles) and the derived
    bound before starting.
 2. **Set up the world**: engine preflight per the bug-hunt mission §2 minus
-   branching (no branch — no code changes): `qa serve` → `qa health` →
-   `qa init --scope <selection-label> --driver <wake|goal> --label <STAMP>`;
+   branching (no branch — no code changes): `app-pilot serve` → `app-pilot health` →
+   `app-pilot init --scope <selection-label> --driver <wake|goal> --label <STAMP>`;
    seed the journal with the queue + rails + bound.
 3. **Per scenario** (one or two per iteration, journal-tracked):
    a. Preconditions → satisfy or SKIPPED(reason).
@@ -83,9 +83,9 @@ On top of them:
 4. **Write-back**: the run log lives at `runlog_dir` per `runlog_naming`,
    in the corpus's own convention (the invoker describes it). Keep
    screenshots in the adapter's `runs/<id>/` and reference them by filename.
-5. **Finish**: `qa check` ground-truth sweep (if the adapter has one) —
+5. **Finish**: `app-pilot check` ground-truth sweep (if the adapter has one) —
    failures become log notes; append `## Summary` (the completion sentinel)
-   to BOTH the run log and `findings.md`; `qa stop`; report totals.
+   to BOTH the run log and `findings.md`; `app-pilot stop`; report totals.
 
 ## Driver notes
 Same pacing machinery as bug-hunt (wake = `ScheduleWakeup` ≈90 s with the

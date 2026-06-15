@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-sim-qa dev-server manager — PINNED to one simulator + Metro port. [DEV TOOL]
+app-pilot dev-server manager — PINNED to one simulator + Metro port. [DEV TOOL]
 
 Scoped on purpose (see target.py): the tester owns exactly target.UDID +
 target.PORT. You can run OTHER projects on OTHER sims/ports simultaneously — it
@@ -34,7 +34,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)  # for sibling core modules (common, crashlog)
 # target.py lives one level up (project/core boundary).
-sys.path.insert(0, os.environ.get("QA_PROJECT_QA_DIR") or os.path.dirname(HERE))
+sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import common  # noqa: E402
 import crashlog  # noqa: E402
 import idb_ui  # noqa: E402
@@ -47,7 +47,7 @@ _BACKEND_HINT = getattr(target, "BACKEND_HINT", "start your local backend")  # p
 def _find_repo():
     """Walk up to the project root (a dir containing package.json) so this folder
     works wherever it's dropped in a repo; falls back to two levels up."""
-    d = os.environ.get("QA_PROJECT_QA_DIR") or HERE
+    d = os.environ.get("APP_PILOT_PROJECT_DIR") or HERE
     for _ in range(6):
         if os.path.exists(os.path.join(d, "package.json")):
             return d
@@ -218,7 +218,7 @@ def cmd_recover(_):
 
 def _approve_openurl_prompt():
     """`simctl openurl` with a custom scheme pops an iOS confirm dialog
-    ('Open in "Lisk (Development)"?') when invoked from outside the app.
+    ('Open in "<your app>"?') when invoked from outside the app.
     Tap its Open button when present so recover/reload stay unattended.
     The dialog can take a few seconds to appear — keep polling after a
     no-prompt read; only stop once we've tapped it and it's gone."""
@@ -280,8 +280,8 @@ def cmd_health(_):
     # idb companion liveness — when DOWN, tap/tree silently no-op (run `recover`).
     # Short timeout: a dead companion must not stall the health gate for 30s.
     companion = idb_ui.companion_alive(target.UDID, timeout=5)
-    print(f"idb companion: {'UP' if companion else 'DOWN — run `qa recover`'}")
-    # Non-zero when any pillar is down so skills/scripts can gate on `qa health`.
+    print(f"idb companion: {'UP' if companion else 'DOWN — run `app-pilot recover`'}")
+    # Non-zero when any pillar is down so skills/scripts can gate on `app-pilot health`.
     if not (metro and backend and companion and state == "app"):
         sys.exit(1)
 
@@ -304,7 +304,7 @@ def cmd_doctor(_):
         sim_known = target.UDID in out
         check(f"simulator {target.UDID[:8]}… ({getattr(target, 'DEVICE_NAME', '?')})",
               sim_known,
-              f"delete scripts/sim-qa/target.local to re-resolve, or pin another UDID there")
+              f"delete scripts/app-pilot/target.local to re-resolve, or pin another UDID there")
         if sim_known:
             booted = f"{target.UDID}) (Booted" in out
             check("simulator booted", booted,
@@ -370,7 +370,7 @@ def cmd_status(_):
         print(f"log: {target.METRO_LOG} ({os.path.getsize(target.METRO_LOG)} bytes)")
     cpid, calive, csize = crashlog.status()
     print(f"crash stream: pid={cpid} alive={calive} ({csize} bytes)")
-    print("to kill: `scripts/sim-qa/qa stop`  (or `lsof -ti tcp:%d | xargs kill`)" % target.PORT)
+    print("to kill: `scripts/app-pilot/app-pilot stop`  (or `lsof -ti tcp:%d | xargs kill`)" % target.PORT)
 
 
 def cmd_stop(_):

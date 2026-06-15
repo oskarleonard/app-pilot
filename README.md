@@ -1,4 +1,4 @@
-# qa-harness — agent-driven QA engines (iOS simulator + web)
+# app-pilot — agent-driven QA engines (iOS simulator + web)
 
 Reusable "eyes & hands" for an AI agent that **operates your running app**:
 reads the live accessibility tree, taps/clicks by label, screenshots, hunts
@@ -11,7 +11,7 @@ every project picks it up on the next `git pull`. That replaces the old
 copy-per-project workflow where improvements died in whichever repo got them.
 
 ```
-qa-harness/
+app-pilot/
 ├── mobile/        # iOS-simulator engine (Expo dev-build apps; simctl + idb)
 │   ├── qa         # engine front door (invoked via a project shim)
 │   ├── core/      # Metro lifecycle, a11y tap/scroll, crash capture, run bookkeeping
@@ -21,7 +21,7 @@ qa-harness/
 │   ├── qa, core/, RUNBOOK.md, target.example.py
 ├── missions/      # job briefs the agent runs on the engines (bug-hunt,
 │                  #   scenario-exec, ... — schema in missions/_format.md)
-├── common/        # shared: publish.py (qa-assets) + targetkit.py (target machinery)
+├── common/        # shared: publish.py (app-pilot-assets) + targetkit.py (target machinery)
 ├── templates/     # project shims + _harness.py + product/ layer template
 └── PORTING.md     # onboarding a new project + hard-won platform gotchas
 ```
@@ -30,16 +30,16 @@ qa-harness/
 
 The engine is **product-agnostic**. Everything project-specific lives in the
 project, layered over the engine through four well-known places in the
-project's qa dir (`scripts/sim-qa/` for mobile, `scripts/qa/` for web):
+project's qa dir (`scripts/app-pilot/` for mobile, `scripts/app-pilot/` for web):
 
 | Layer | File(s) | Required? |
 |---|---|---|
 | **Pin** | `target.py` (+ gitignored `target.local`) — sim/port/bundle/mode env, server cmd | yes |
-| **Ground truth & product brain** | `product/` — `qa_api.py` (`qa check/snapshot/diff`), `INVARIANTS.md`, `FIGMA_MAP.md`, `RUNBOOK.md` addendum (modes, rails, scopes) | no |
+| **Ground truth & product brain** | `product/` — `app_pilot_api.py` (`app-pilot check/snapshot/diff`), `INVARIANTS.md`, `FIGMA_MAP.md`, `RUNBOOK.md` addendum (modes, rails, scopes) | no |
 | **Project commands** | `ext/<name>{,.py,.sh}` — any extra subcommand (`qa <name>`), e.g. an autoplay layer for timed gameplay | no |
 | **Output** | `runs/` (gitignored) | auto |
 
-`product/qa_api.py` owns *whatever* the project's ground truth is — a local
+`product/app_pilot_api.py` owns *whatever* the project's ground truth is — a local
 REST backend, SQLite, a state-store dump. The engine only defines the CLI
 contract (`check`, `snapshot --out f`, `diff f [--expect-new N]`); without the
 file, those commands no-op with a notice.
@@ -56,20 +56,20 @@ care where the dir comes from.
 ## Install (once per machine)
 
 ```bash
-git clone https://github.com/oskarleonard/qa-harness ~/programming/projects/qa-harness
+git clone https://github.com/oskarleonard/app-pilot ~/programming/projects/app-pilot
 ```
 
 Projects resolve the harness in this order:
-1. `QA_HARNESS_DIR` env var
-2. `~/.qa-harness` — a one-line file containing the path
-3. `~/programming/projects/qa-harness` (default)
+1. `APP_PILOT_HOME` env var
+2. `~/.app-pilot` — a one-line file containing the path
+3. `~/programming/projects/app-pilot` (default)
 
-If you cloned elsewhere: `echo /path/to/qa-harness > ~/.qa-harness`.
+If you cloned elsewhere: `echo /path/to/app-pilot > ~/.app-pilot`.
 
 ## Onboard a project (minutes)
 
-1. Copy the shim: `templates/shim-mobile` → `<project>/scripts/sim-qa/qa`
-   (or `templates/shim-web` → `<project>/scripts/qa/qa`), `chmod +x`; copy
+1. Copy the shim: `templates/shim-mobile` → `<project>/scripts/app-pilot/app-pilot`
+   (or `templates/shim-web` → `<project>/scripts/app-pilot/app-pilot`), `chmod +x`; copy
    `templates/_harness.py` next to it.
 2. Copy `mobile/target.example.py` (or `web/`) next to it as `target.py` and
    edit its CONFIG section — values only; the machinery (sim auto-resolve,
@@ -77,7 +77,7 @@ If you cloned elsewhere: `echo /path/to/qa-harness > ~/.qa-harness`.
 3. Gitignore `runs/`, `target.local`, `__pycache__/` in that dir.
 4. Optional: add `product/` (start from `templates/product-README.md`) and
    `ext/`.
-5. Smoke test: `qa doctor` → `qa serve` → `qa health` → (mobile) `qa tree`.
+5. Smoke test: `app-pilot doctor` → `app-pilot serve` → `app-pilot health` → (mobile) `app-pilot tree`.
 
 PORTING.md has the full recipe plus the empirical gotchas that cost a day
 each if rediscovered.

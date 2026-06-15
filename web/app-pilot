@@ -1,0 +1,92 @@
+#!/bin/bash
+# app-pilot (web) engine front door (harness-resident — see repo README).
+# Always invoked through a PROJECT's scripts/app-pilot/app-pilot shim, which exports
+# APP_PILOT_PROJECT_DIR = the project's qa dir. That dir layers everything
+# project-specific over this engine:
+#   target.py      pinned tester port/URLs/mode env   (committed, required)
+#   product/       ground truth + design map + rails  (optional)
+#   ext/           project-specific subcommands       (optional)
+#   runs/          per-run output                     (gitignored)
+set -euo pipefail
+H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMMON="$(cd "$H/.." && pwd)/common"
+
+cmd="${1:-help}"
+if [ "$#" -gt 0 ]; then shift; fi
+
+if [ "$cmd" = "help" ] || [ "$cmd" = "--help" ] || [ "$cmd" = "-h" ]; then
+  cat <<'EOF'
+app-pilot (web) — agent-driven QA for a web app (pinned tester server: the project's target.py)
+
+Engine lives in app-pilot/web; run it via your project's scripts/app-pilot/app-pilot shim.
+The agent's EYES AND HANDS are the Playwright MCP (browser_navigate /
+browser_click / browser_snapshot / browser_console_messages / ...) — see the
+project README for the one-time MCP setup. These commands cover the rest:
+
+Tester server (pinned port — your own dev server is never touched):
+  app-pilot serve              start the tester's dev server in the active mode
+  app-pilot health             server up? backend up (when the project has one)?
+  app-pilot status             pid, port holders, log size
+  app-pilot logs [N]           last N lines of the tester server log
+  app-pilot stop               kill the tester's server (this port only)
+
+Run bookkeeping + archival evidence:
+  app-pilot init --scope S [--driver wake|goal] [--label L]   start a run
+  app-pilot shot <label> [path]   full-page screenshot of APP_URL+path into the run
+                           (fresh headless context)
+  app-pilot note <text>        append a finding
+  app-pilot act <text>         append to the audit log
+
+PR evidence (hosts images OFF the PR branch — see RUNBOOK "PR evidence"):
+  app-pilot publish <img> --feature S [--name F] [--caption C] [--width N]
+                        host a QA image on the hidden app-pilot-assets store ref (no branch, no banner)
+
+Ground truth (delegated to the project's product/app_pilot_api.py when present):
+  app-pilot check              assert the project's invariant registry
+  app-pilot snapshot --out f   snapshot state before a risky action
+  app-pilot diff f [--expect-new N]   delta probes vs a snapshot
+
+  app-pilot target [--url|--port|--mode]   print pinned config values
+
+Anything else resolves against the project's ext/ dir.
+Modes: set per project in target.py (via MODE_ENV).
+EOF
+  exit 0
+fi
+
+PROJ="${APP_PILOT_PROJECT_DIR:-}"
+if [ -z "$PROJ" ] || [ ! -f "$PROJ/target.py" ]; then
+  echo "app-pilot: APP_PILOT_PROJECT_DIR not set or no target.py in it — run via your project's scripts/app-pilot/app-pilot shim" >&2
+  exit 1
+fi
+export APP_PILOT_PROJECT_DIR="$PROJ"
+
+case "$cmd" in
+  serve|health|status|stop)
+    exec python3 "$H/core/devserver.py" "$cmd" "$@" ;;
+  logs)
+    exec python3 "$H/core/devserver.py" logs "${1:-40}" ;;
+  init|shot|note|act)
+    exec python3 "$H/core/qa.py" "$cmd" "$@" ;;
+  publish)
+    exec python3 "$COMMON/publish.py" "$@" ;;
+  check|snapshot|diff)
+    for api in "$PROJ/product/app_pilot_api.py" "$PROJ/product/qa_api.py"; do
+      [ -f "$api" ] && exec python3 "$api" "$cmd" "$@"
+    done
+    echo "app-pilot $cmd: no ground-truth layer in this project (no product/app_pilot_api.py) — nothing to assert"
+    exit 0 ;;
+  target)
+    exec python3 "$PROJ/target.py" "$@" ;;
+  *)
+    for cand in "$PROJ/ext/$cmd" "$PROJ/ext/$cmd.py" "$PROJ/ext/$cmd.sh"; do
+      [ -f "$cand" ] || continue
+      case "$cand" in
+        *.py) exec python3 "$cand" "$@" ;;
+        *.sh) exec bash "$cand" "$@" ;;
+        *)    exec "$cand" "$@" ;;
+      esac
+    done
+    echo "app-pilot: unknown command '$cmd' — run 'app-pilot help' (project commands live in ext/)" >&2
+    exit 1 ;;
+esac

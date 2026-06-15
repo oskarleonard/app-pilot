@@ -1,7 +1,7 @@
-# web-qa RUNBOOK — how the AI runs a QA round (engine spine)
+# app-pilot RUNBOOK — how the AI runs a QA round (engine spine)
 
 The **AI drives + evaluates + (by default) fixes**; the Playwright MCP is its
-eyes/hands and the project's `scripts/qa/qa` is the bookkeeping. The human says
+eyes/hands and the project's `scripts/app-pilot/app-pilot` is the bookkeeping. The human says
 e.g. *"find and fix bugs in the send flow for 1h"* or *"report only, 30m"*,
 then reviews the result. The discipline is identical to the mobile engine's;
 the mechanics are web-native.
@@ -21,7 +21,7 @@ Where this spine says "per product", the addendum decides.
 Defined per product in `product/RUNBOOK.md`. The universal pattern:
 - A **local/mock** mode (default): writes are local → exercising real flows is
   allowed AND wanted. Preflight: if the project pins a `BACKEND_URL`, it must
-  answer (`qa health` checks; if DOWN, STOP — health prints the start command).
+  answer (`app-pilot health` checks; if DOWN, STOP — health prints the start command).
 - A **deterministic frontend** mode (MSW or similar), if the product defines
   one: UI/flow/design checks only; ground-truth invariants don't apply.
 - A **staging/real** mode, if defined: the tester cannot log in itself (OAuth);
@@ -29,12 +29,12 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
   **read-mostly**: never click Send / Confirm / Approve / Submit / Delete.
 
 ## Eyes and hands — the Playwright MCP
-- `browser_navigate(url)` — go to `qa target --url` + path
+- `browser_navigate(url)` — go to `app-pilot target --url` + path
 - `browser_snapshot()` — the ARIA tree: roles, names, states. Prefer it over
   screenshots for finding things
 - `browser_click` / `browser_type` / `browser_select_option` — by element ref
   from the snapshot (no pixel guessing, no occlusion problem)
-- `browser_take_screenshot()` — in-session eyes (use `qa shot <label> <path>`
+- `browser_take_screenshot()` — in-session eyes (use `app-pilot shot <label> <path>`
   instead when you want the image ARCHIVED in the run folder)
 - `browser_console_messages()` — **check every iteration**: errors and
   warnings are findings (hydration mismatches especially)
@@ -43,28 +43,28 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
 - `browser_resize(w, h)` — responsive probes
 
 ## Run a QA loop
-1. **Own the tester server:** `qa serve` → `qa health` (exit 0 = server +
+1. **Own the tester server:** `app-pilot serve` → `app-pilot health` (exit 0 = server +
    backend green). Your own dev server is untouched.
 2. **(fix mode) Clean tree + branch:** require clean `git status` — if dirty,
    STOP and have the human commit/stash. Then create `qa-auto/<scope>-<STAMP>`
    off the current branch; note the base branch for the PR.
-3. **Start a run:** `qa init --scope <scope> --driver <wake|goal> --label <STAMP>`.
+3. **Start a run:** `app-pilot init --scope <scope> --driver <wake|goal> --label <STAMP>`.
 4. **Seed `runs/<id>/journal.md`**: mode, tester mode, bound (deadline + a
    step cap), base branch, HARD RULES, nav map, plan. The journal IS the
    loop's state — re-read it every iteration; it survives compaction.
 5. **Self-pace** per the invoked skill (`ScheduleWakeup` ≈90s) — or in
-   watchdog mode (`/loop 3m /qa-tester-wake <args> --driven`) the harness
+   watchdog mode (`/loop 3m /app-pilot <args> --driven`) the harness
    re-fires on a fixed timer even if an iteration crashed; the skill then
    never self-schedules, and post-finish firings are journal-guarded no-ops
    until the loop is cancelled.
 6. **Each iteration:** re-read journal FIRST. Then: STEP0 stop-check →
-   STEP1 `qa health` → STEP2 `browser_console_messages` +
+   STEP1 `app-pilot health` → STEP2 `browser_console_messages` +
    `browser_network_requests` (new errors/failed requests = findings) →
-   STEP3 snapshot/screenshot → assess → `qa note` bugs → STEP4 (fix mode)
+   STEP3 snapshot/screenshot → assess → `app-pilot note` bugs → STEP4 (fix mode)
    Fix flow → STEP5 navigate deeper → STEP6 update journal.
 7. **Finish (bound reached):** append the final **`## Summary`** section to
    `findings.md` (that exact heading is the completion sentinel). Run the
-   product's **ground-truth sweep** first (local mode): `qa check` — each
+   product's **ground-truth sweep** first (local mode): `app-pilot check` — each
    failure is a finding. (fix mode) commits exist → push `qa-auto/<...>` +
    open a PR; else report the branch name.
 
@@ -87,17 +87,17 @@ routes from the nav in the first ARIA snapshot — don't guess.
 4. **Commit or revert:** one atomic commit per verified fix. Unverified → revert.
 5. **Stuck-loop cap:** max 2 attempts per bug, then escalate as a finding.
 
-## PR evidence for visual fixes (host via `qa publish` — NEVER the PR branch)
+## PR evidence for visual fixes (host via `app-pilot publish` — NEVER the PR branch)
 A find-and-fix run that changed anything ON-SCREEN should SHOW it in the PR body:
 - **Before/after montage per visual fix** — same screen, pre- vs post-fix, side by
-  side. **Capture the failing state with an archival `qa shot` when you LOG the
+  side. **Capture the failing state with an archival `app-pilot shot` when you LOG the
   bug** — that is the before half; `browser_take_screenshot` is in-session only
   and leaves nothing to montage at Finish. `after` = the verified fix after the
   hot reload. Build it with ImageMagick (`magick montage …`) at full res;
   **never downscale the source** (bakes in blur).
-- **Host it via `qa publish` — NEVER on the PR/run branch:** `qa publish
+- **Host it via `app-pilot publish` — NEVER on the PR/run branch:** `app-pilot publish
   <montage.png> --feature <flow>-<topic> [--caption "…"]`. It appends the PNG
-  to the hidden, append-only `refs/qa-assets/store` ref (no branch → no
+  to the hidden, append-only `refs/app-pilot-assets/store` ref (no branch → no
   "recent pushes" banner, nothing to merge; created/seeded on first use) and
   prints a commit-pinned `<img src="…/blob/<sha>/<feature>/<file>?raw=true"
   width="580">` tag for the PR body. Images share no history with `main` and
@@ -122,13 +122,13 @@ from the closest available state, and note the gap).
 - **Navigate via the ARIA snapshot** (roles/names), not coordinates. An
   element you can't address by role/name is itself an accessibility finding.
 - **Money/destructive-flow audit (local mode):** before EVERY click on a
-  Confirm/Send/Approve/Submit-style control: `qa shot` + `qa act CONFIRM <what>`.
+  Confirm/Send/Approve/Submit-style control: `app-pilot shot` + `app-pilot act CONFIRM <what>`.
   In staging those clicks are FORBIDDEN. Product rails: `product/RUNBOOK.md`.
 - **Ground-truth sweep before Finish (local mode, if the product has one):**
-  `qa check` (registry: `product/INVARIANTS.md`). Bracket risky actions with
-  `qa snapshot` / `qa diff --expect-new N` (double-submit probe).
+  `app-pilot check` (registry: `product/INVARIANTS.md`). Bracket risky actions with
+  `app-pilot snapshot` / `app-pilot diff --expect-new N` (double-submit probe).
 - **Recovery hierarchy:** in-app navigation → `browser_navigate` back to a
-  known route → page reload → `qa serve` (server restart) last.
+  known route → page reload → `app-pilot serve` (server restart) last.
 - **Image-processing error = stop the loop (cost hazard, never self-heals in-session).**
   If the console shows `API Error: an image in the conversation could not be processed
   and was removed`, or a screenshot read comes back with no image, an oversized
@@ -138,12 +138,12 @@ from the closest available state, and note the gap).
   invalidates the prompt cache, so all remaining turns bill at near-full price.
   Do NOT keep QA-ing through it and do NOT retry the read — write current state
   to `findings.md`, end the session, resume fresh. Web-specific prevention:
-  archival `qa shot` images are FULL-PAGE (long routes blow past 2000px tall)
+  archival `app-pilot shot` images are FULL-PAGE (long routes blow past 2000px tall)
   and belong in the run folder, NOT in the conversation — use the MCP's
   viewport-sized `browser_take_screenshot()` for in-session eyes, and read
   archived shots / montages / Figma exports only via a `sips -Z 1800` copy.
 - **No new dependencies / installs** in the loop — log instead.
-- Self-recover (`qa health` / `qa serve`), don't ask.
+- Self-recover (`app-pilot health` / `app-pilot serve`), don't ask.
 
 ## Active bug-hunt checklist (probe, don't just happy-path)
 At least 1-2 per round: console-error sweep on every route visited ·
@@ -157,15 +157,15 @@ round · query-cache staleness (mutate, check other screens reflect).
 ## Design verification (on demand — `product/FIGMA_MAP.md`)
 `/check-figma <screen> [--strict]`: resolve the node in the product's
 FIGMA_MAP.md, fetch the Figma render (MCP `get_screenshot` → curl into
-`runs/<id>/figma/`), capture the app at the same route + viewport (`qa shot`),
+`runs/<id>/figma/`), capture the app at the same route + viewport (`app-pilot shot`),
 judge structure+tokens by default. Strict mode may MEASURE (computed styles vs
 Figma variables) — see FIGMA_MAP.
 
 ## Limits
 - The wake loop is session-scoped (terminal open, Mac awake).
 - Deterministic-frontend mode: no backend behavior under test; staging: read-only.
-- A fresh `qa shot` context sees mock-auth states only — staging screenshots
+- A fresh `app-pilot shot` context sees mock-auth states only — staging screenshots
   must come from the MCP's logged-in session.
 
 ## Cleanup
-`qa stop` · run output in `runs/<timestamp>__<scope>/` (gitignored).
+`app-pilot stop` · run output in `runs/<timestamp>__<scope>/` (gitignored).

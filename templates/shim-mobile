@@ -1,22 +1,22 @@
 #!/bin/bash
-# sim-qa front door — resolves the shared qa-harness and runs its MOBILE engine
+# app-pilot front door — resolves the shared app-pilot and runs its MOBILE engine
 # with THIS project's layers (target.py pin · product/ · ext/ · runs/).
-# Install: copy to <project>/scripts/sim-qa/qa && chmod +x.
-# Harness resolution: $QA_HARNESS_DIR → ~/.qa-harness (one-line path file)
-#                     → ~/programming/projects/qa-harness
+# Install: copy to <project>/scripts/app-pilot/app-pilot && chmod +x.
+# Harness resolution: $APP_PILOT_HOME → ~/.app-pilot (one-line path file)
+#                     → ~/programming/projects/app-pilot
 set -euo pipefail
 PROJ="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-H="${QA_HARNESS_DIR:-}"
-if [ -z "$H" ] && [ -f "$HOME/.qa-harness" ]; then H="$(head -n1 "$HOME/.qa-harness")"; fi
-if [ -z "$H" ]; then H="$HOME/programming/projects/qa-harness"; fi
+H="${APP_PILOT_HOME:-}"
+if [ -z "$H" ] && [ -f "$HOME/.app-pilot" ]; then H="$(head -n1 "$HOME/.app-pilot")"; fi
+if [ -z "$H" ]; then H="$HOME/programming/projects/app-pilot"; fi
 
 if [ ! -x "$H/mobile/qa" ]; then
   echo "qa: harness not found at '$H'. Fix one of:" >&2
-  echo "  git clone https://github.com/oskarleonard/qa-harness \"\$HOME/programming/projects/qa-harness\"" >&2
-  echo "  echo /path/to/qa-harness > ~/.qa-harness" >&2
-  echo "  export QA_HARNESS_DIR=/path/to/qa-harness" >&2
+  echo "  git clone https://github.com/oskarleonard/app-pilot \"\$HOME/programming/projects/app-pilot\"" >&2
+  echo "  echo /path/to/app-pilot > ~/.app-pilot" >&2
+  echo "  export APP_PILOT_HOME=/path/to/app-pilot" >&2
   exit 1
 fi
 
-QA_PROJECT_QA_DIR="$PROJ" exec "$H/mobile/qa" "$@"
+APP_PILOT_PROJECT_DIR="$PROJ" exec "$H/mobile/qa" "$@"

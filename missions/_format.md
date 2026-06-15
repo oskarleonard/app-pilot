@@ -13,7 +13,7 @@ Missions are launched by a ~10-line **shim** in each project's
 
 - **driver** — `wake` (ScheduleWakeup self-pacing) or `goal` (/goal Stop-hook
   pacing). Missions define behavior per driver; shims hardcode one each.
-- **adapter dir** — the project's qa layer (`scripts/sim-qa` or `scripts/qa`):
+- **adapter dir** — the project's qa layer (`scripts/app-pilot` or `scripts/app-pilot`):
   `target.py` (pin) · `product/` (truth, rails, registries) · `ext/` ·
   `runs/`. Every project-specific fact the mission needs resolves here.
 - **request** — the user's free-text arguments (`$ARGUMENTS`).

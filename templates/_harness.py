@@ -1,23 +1,23 @@
-"""Locate the shared qa-harness and expose its helper lib (targetkit).
+"""Locate the shared app-pilot and expose its helper lib (targetkit).
 
-Installed per project next to target.py — copy from qa-harness/templates/,
-never edit. Resolution mirrors the qa shim: $QA_HARNESS_DIR -> ~/.qa-harness
-(one-line path file) -> ~/programming/projects/qa-harness.
+Installed per project next to target.py — copy from app-pilot/templates/,
+never edit. Resolution mirrors the qa shim: $APP_PILOT_HOME -> ~/.app-pilot
+(one-line path file) -> ~/programming/projects/app-pilot.
 """
 import os
 import sys
 
 
 def root():
-    env = os.environ.get("QA_HARNESS_DIR")
+    env = os.environ.get("APP_PILOT_HOME")
     if env:
         return env
-    pin = os.path.expanduser("~/.qa-harness")
+    pin = os.path.expanduser("~/.app-pilot")
     if os.path.exists(pin):
         v = open(pin).read().strip()
         if v:
             return v
-    return os.path.expanduser("~/programming/projects/qa-harness")
+    return os.path.expanduser("~/programming/projects/app-pilot")
 
 
 def _checked_root():
@@ -25,9 +25,9 @@ def _checked_root():
     if not os.path.isdir(os.path.join(r, "common")):
         sys.exit(
             f"qa: harness not found at '{r}'. Fix one of:\n"
-            f"  git clone https://github.com/oskarleonard/qa-harness \"$HOME/programming/projects/qa-harness\"\n"
-            f"  echo /path/to/qa-harness > ~/.qa-harness\n"
-            f"  export QA_HARNESS_DIR=/path/to/qa-harness"
+            f"  git clone https://github.com/oskarleonard/app-pilot \"$HOME/programming/projects/app-pilot\"\n"
+            f"  echo /path/to/app-pilot > ~/.app-pilot\n"
+            f"  export APP_PILOT_HOME=/path/to/app-pilot"
         )
     return r
 

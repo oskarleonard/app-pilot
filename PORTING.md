@@ -10,11 +10,11 @@ per-app values, and the empirical platform gotchas.
 | Piece | Action |
 |---|---|
 | Engine (`mobile/core` or `web/core` + dispatcher) | **Free.** Lives in this repo; never copy it into a project. |
-| `scripts/.../qa` shim + `_harness.py` | Copy both from `templates/` (never edited). |
+| `scripts/.../app-pilot` shim + `_harness.py` | Copy both from `templates/` (never edited). |
 | `target.py` | **Write per project** from `target.example.py` — the CONFIG section only; the machinery (UDID auto-resolve + `target.local` pin, `--field` CLI) comes from `common/targetkit.py`. See "Per-app values". |
-| `product/` (qa_api.py + INVARIANTS.md + FIGMA_MAP.md + RUNBOOK addendum) | **Re-derive per product** — this asserts THIS app's ground truth and rails. Port the *pattern* (see "Ground-truth layer"), never the rules. |
+| `product/` (app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md + RUNBOOK addendum) | **Re-derive per product** — this asserts THIS app's ground truth and rails. Port the *pattern* (see "Ground-truth layer"), never the rules. |
 | `ext/` | Only if the project needs extra mechanics (e.g. an autoplay layer for timed gameplay — sub-3s response windows an LLM can't keep up with live). |
-| `.claude/commands/qa-tester*.md` | Thin per-project pointers: "follow the engine RUNBOOK + product/RUNBOOK.md". The Rails sections are the per-app customization point. |
+| `.claude/commands/app-pilot*.md` | Thin per-project pointers: "follow the engine RUNBOOK + product/RUNBOOK.md". The Rails sections are the per-app customization point. |
 
 ## Per-app values (target.py)
 
@@ -24,7 +24,7 @@ Mobile:
 - `PORT` — distinct from the app's dev Metro AND every other tester.
 - `BUNDLE` + `SCHEME` — from `app.config.ts` (dev-flavor bundle id; URL scheme
   for dev-client deep links).
-- `TAB_ORDER` — read the live a11y tree (`qa tree`), don't guess.
+- `TAB_ORDER` — read the live a11y tree (`app-pilot tree`), don't guess.
 - `LAUNCHER_LABELS` — strings distinctive of the Expo dev-launcher AND the
   dev-client error screen ("there was a problem loading the project",
   "failed to load app").
@@ -43,7 +43,7 @@ Web:
   you) + `SERVER_CWD` (monorepo subdir, default repo root).
 - `SERVER_LOG`/`PIDFILE` — namespace per project.
 - Optional: `BACKEND_URL`/`BACKEND_HINT` as above.
-- Headless: `qa shot` is always headless. The agent's live eyes are the
+- Headless: `app-pilot shot` is always headless. The agent's live eyes are the
   Playwright MCP — toggle headless in the project's `.mcp.json` args.
 
 ### Web gotcha — Next 16 allows ONE dev server per project dir
@@ -87,11 +87,11 @@ down.
 10. **`simctl openurl` pops an "Open in <app>?" confirm** when invoked from
     outside the app — core auto-approves it; budget polls for slow dialogs.
 
-## Ground-truth layer (`product/qa_api.py`) — port the pattern, not the file
+## Ground-truth layer (`product/app_pilot_api.py`) — port the pattern, not the file
 
 1. Find the app's ground truth (local BE REST, SQLite, a store dump, …). If
    only a remote prod API exists, this layer may not apply — that's fine;
-   `qa check` no-ops without the file.
+   `app-pilot check` no-ops without the file.
 2. Read the schema/serving code FIRST and classify: **real invariants** =
    denormalized state that can drift (counters incremented in place, soft
    references with no FK, pagination merges); **tautological** = computed on
@@ -115,13 +115,13 @@ down.
 ## Smoke test for a fresh onboarding
 
 ```bash
-scripts/sim-qa/qa doctor      # every FAIL prints its fix; resolves + pins the sim
-scripts/sim-qa/qa serve       # owns Metro/dev server, force-reloads the app
-scripts/sim-qa/qa health      # exit 0 = all green
-scripts/sim-qa/qa tree        # (mobile) labelled elements visible?
-scripts/sim-qa/qa init --scope all --label onboarding-smoke
-scripts/sim-qa/qa shot home
-scripts/sim-qa/qa stop
+scripts/app-pilot/app-pilot doctor      # every FAIL prints its fix; resolves + pins the sim
+scripts/app-pilot/app-pilot serve       # owns Metro/dev server, force-reloads the app
+scripts/app-pilot/app-pilot health      # exit 0 = all green
+scripts/app-pilot/app-pilot tree        # (mobile) labelled elements visible?
+scripts/app-pilot/app-pilot init --scope all --label onboarding-smoke
+scripts/app-pilot/app-pilot shot home
+scripts/app-pilot/app-pilot stop
 ```
 
 All green → wired. Expect the smoke test itself to surface real app bugs —

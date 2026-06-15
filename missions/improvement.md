@@ -84,22 +84,22 @@ On top of them:
    **DO / SKIP(bug→bug-hunt) / DEFER(owner-decision)** with a one-line reason
    each. Print the triaged queue + the bound BEFORE touching code — the triage
    is the mission's first deliverable and stands on its own in report-only mode.
-3. **Set up:** engine preflight per bug-hunt §2 (`qa serve` → `qa health` →
-   `qa recover`); require a clean `git status` (dirty → STOP); `STAMP` once;
-   create `improve/<label>-<STAMP>` off `base`; `qa init`; seed
+3. **Set up:** engine preflight per bug-hunt §2 (`app-pilot serve` → `app-pilot health` →
+   `app-pilot recover`); require a clean `git status` (dirty → STOP); `STAMP` once;
+   create `improve/<label>-<STAMP>` off `base`; `app-pilot init`; seed
    `runs/<id>/journal.md` with the queue + dispositions + rails (write-fence,
    `behavior` mode) + base branch. Seed `improvements.md` with the verdict
-   table — it is mission-owned, write verdicts to it directly (`qa note` /
+   table — it is mission-owned, write verdicts to it directly (`app-pilot note` /
    `findings.md` is only for incidental defects you trip over).
 4. **Per DO item** (one or two per iteration, journal-tracked, re-read the
    journal first):
    a. Make the smallest localized change.
    b. Adapter static checks green; red → fix or revert (≤2, then DEFERRED).
-   c. **Live spot-check** the touched surface on the tester (`qa shot`):
+   c. **Live spot-check** the touched surface on the tester (`app-pilot shot`):
       behavior preserved (or the authorized `change` delta observed).
    d. Commit (one item per commit, message = the item title); write the
       **DONE** verdict + evidence path into `improvements.md` immediately.
-5. **Finish:** `qa check` ground-truth sweep (failures → log notes, block the
+5. **Finish:** `app-pilot check` ground-truth sweep (failures → log notes, block the
    PR until resolved); append the verdict table + `## Summary` (totals per
    verdict + the **DEFERRED owner-decisions list**, so the human gets a
    decision-ready summary, not a pile; any selected item not reached within the
