@@ -30,7 +30,7 @@ app-pilot/
 
 The engine is **product-agnostic**. Everything project-specific lives in the
 project, layered over the engine through four well-known places in the
-project's qa dir (`scripts/app-pilot/` for mobile, `scripts/app-pilot/` for web):
+project's app-pilot dir (`scripts/app-pilot/`, same for mobile and web):
 
 | Layer | File(s) | Required? |
 |---|---|---|
