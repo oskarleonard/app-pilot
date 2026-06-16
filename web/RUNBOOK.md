@@ -31,7 +31,10 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
 ## Eyes and hands — the Playwright MCP
 - `browser_navigate(url)` — go to `app-pilot target --url` + path
 - `browser_snapshot()` — the ARIA tree: roles, names, states. Prefer it over
-  screenshots for finding things
+  screenshots for finding things. If you dump a snapshot / ARIA tree (or any
+  scratch file) to disk, write it under the active run dir (`runs/<run>/`),
+  **never** the repo root or project cwd — stray files there pollute the target
+  repo's git status.
 - `browser_click` / `browser_type` / `browser_select_option` — by element ref
   from the snapshot (no pixel guessing, no occlusion problem)
 - `browser_take_screenshot()` — in-session eyes (use `app-pilot shot <label> <path>`
