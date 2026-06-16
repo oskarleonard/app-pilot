@@ -51,6 +51,8 @@ Run bookkeeping + eyes & hands:
 PR evidence (hosts images OFF the PR branch — see RUNBOOK "PR evidence"):
   app-pilot publish <img> --feature S [--name F] [--caption C] [--width N]
                         host a QA image on the hidden app-pilot-assets store ref (no branch, no banner)
+  app-pilot inject-rules [dir]
+                        insert/refresh the app-pilot-rules block in the project's AGENTS.md
 
 Ground truth (delegated to the project's product/app_pilot_api.py when present):
   app-pilot check              assert the project's invariant registry (exit 1 on fail)
@@ -81,6 +83,8 @@ case "$cmd" in
     exec python3 "$H/core/qa.py" "$cmd" "$@" ;;
   publish)
     exec python3 "$COMMON/publish.py" "$@" ;;
+  inject-rules)
+    exec python3 "$COMMON/inject_rules.py" "$@" ;;
   check|snapshot|diff)
     for api in "$PROJ/product/app_pilot_api.py" "$PROJ/product/qa_api.py"; do
       [ -f "$api" ] && exec python3 "$api" "$cmd" "$@"
