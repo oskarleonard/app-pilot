@@ -40,6 +40,12 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
   warnings are findings (hydration mismatches especially)
 - `browser_network_requests()` — **check every iteration**: 4xx/5xx responses
   the UI swallowed are findings
+- **"Occurred" vs "surfaced".** A captured 4xx/5xx means an error *occurred* —
+  separate that from whether it was *shown* to the user. Apps usually show feedback
+  as **transient toasts that auto-dismiss** (~seconds) in a dedicated region distinct
+  from any in-app "notifications"/bell UI. After an action that can fail, snapshot the
+  toast region **immediately** (before it dismisses); never conclude "no error shown"
+  from one empty region. The project addendum names the app's toast selector.
 - `browser_resize(w, h)` — responsive probes
 
 ## Run a QA loop
