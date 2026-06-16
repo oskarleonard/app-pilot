@@ -15,6 +15,7 @@ per-app values, and the empirical platform gotchas.
 | `product/` (app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md + RUNBOOK addendum) | **Re-derive per product** — this asserts THIS app's ground truth and rails. Port the *pattern* (see "Ground-truth layer"), never the rules. |
 | `ext/` | Only if the project needs extra mechanics (e.g. an autoplay layer for timed gameplay — sub-3s response windows an LLM can't keep up with live). |
 | `.claude/commands/app-pilot*.md` | Thin per-project pointers: "follow the engine RUNBOOK + product/RUNBOOK.md". The Rails sections are the per-app customization point. |
+| `AGENTS.md` `app-pilot-rules` block | Inject `templates/agents-app-pilot-rules.md` (the `BEGIN…END` block) into the project's `AGENTS.md`. Single source of truth for the QA/visual-evidence conventions (screenshots → `publish`, never commit); edit the template, not the project copy. |
 
 ## Per-app values (target.py)
 
