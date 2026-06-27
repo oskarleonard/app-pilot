@@ -45,6 +45,22 @@ LAUNCHER_LABELS = [
     "failed to load app",
 ]
 
+# app_state() POSITIVE app detection — a11y label(s) on screen ONLY when YOUR
+# app is frontmost (a tab title, a screen header, a logo's accessibilityLabel —
+# read `app-pilot tree`, don't guess). STRONGLY recommended: when set, health/
+# recover report 'app' ONLY when one is actually visible, so a silently-failed
+# launch (home screen frontmost) reads 'unknown' instead of a false 'app' the
+# verdict would pass. Leave it unset to keep the old optimistic default (assume
+# 'app' when not the launcher/home screen) — weaker, can't confirm your app.
+APP_LABELS = ["home", "settings"]
+
+# app_state() springboard (iOS home-screen) detection. Default ["safari"] is a
+# brand name, so it survives non-English locales — the old hardcoded check also
+# required "messages", which is "Meddelanden" on a Swedish device, so a localized
+# home screen was misread as the app (a false PASS). Override if your own UI
+# carries a "Safari" label (then prefer APP_LABELS above for the real signal).
+SPRINGBOARD_LABELS = ["safari"]
+
 # OS crash-log stream predicate (substring of the app's process image path).
 LOG_PROCESS_HINT = "myapp"
 

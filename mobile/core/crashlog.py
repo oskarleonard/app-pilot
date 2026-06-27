@@ -39,6 +39,21 @@ PATTERNS = [
     "*** Terminating", "fatal error", "Fatal Exception", "EXC_BAD", "facebook::react",
 ]
 
+# A high-confidence subset of PATTERNS: lines that mean the app is genuinely
+# broken (red-box / native crash / fatal abort), not a soft warning. The
+# `devserver health` verdict gates on THIS set — a false PASS on a crashed app
+# is the worst failure for the engine that verifies its own fixes, so health
+# must go red on a real crash. The softer markers left out here
+# ("Unhandled promise rejection"/"Possible Unhandled Promise" can be caught or
+# dev-only; "ExceptionsManager"/"TurboModuleRegistry"/"facebook::react" appear
+# in non-fatal native logs too) stay advisory-only via `crashes`, so they can't
+# turn a healthy app's gate red — a false FAIL is its own reliability bug.
+FATAL_PATTERNS = [
+    "Cannot find native module", "Invariant Violation", "Unhandled JS Exception",
+    "RedBox", "RCTFatal", "Terminating app due to uncaught", "*** Terminating",
+    "fatal error", "Fatal Exception", "EXC_BAD",
+]
+
 
 def _pid():
     try:
@@ -68,9 +83,19 @@ def alive(pid):
     return _owned(pid)
 
 
-def start():
-    """Idempotent — leaves an existing live stream running; else spawns one."""
+def start(fresh=False):
+    """Idempotent — leaves an existing live stream running; else spawns one.
+
+    fresh=True first stops any running stream so the crash log is truncated to a
+    clean baseline. `serve` uses it: each serve begins a new QA session, so the
+    health crash-gate then reflects crashes SINCE this serve, not a crash left
+    over from a previous session whose stream happened to still be alive.
+    `recover` keeps the default (idempotent) so it never drops in-flight capture.
+    """
     pid = _pid()
+    if fresh:
+        stop()  # kill any live stream + clear the pidfile -> next open("w") truncates
+        pid = _pid()
     if alive(pid):
         return pid
     # Open with "w" (truncates any stale file from a prior session). Default
@@ -107,10 +132,12 @@ def status():
     return pid, alive(pid), size
 
 
-def hits(n=20):
+def hits(n=20, patterns=None):
     """(last n hit lines, total hits, total lines) of crash-pattern matches.
 
-    Scans only the last MAX_TAIL_BYTES of the file so RAM stays bounded no
+    `patterns` defaults to the full advisory PATTERNS (what `crashes` reports);
+    pass FATAL_PATTERNS for the high-confidence subset the health verdict gates
+    on. Scans only the last MAX_TAIL_BYTES of the file so RAM stays bounded no
     matter how large the crash log grows. `total`/`scanned` are therefore
     counts WITHIN the scanned tail, not the whole file — which is fine: we
     want recent crashes, and an unbounded full-file read is exactly what
@@ -119,7 +146,7 @@ def hits(n=20):
     if not os.path.exists(target.CRASHLOG):
         return [], 0, 0
     size = os.path.getsize(target.CRASHLOG)
-    pats = [p.lower() for p in PATTERNS]
+    pats = [p.lower() for p in (patterns or PATTERNS)]
     with open(target.CRASHLOG, "rb") as fh:
         if size > MAX_TAIL_BYTES:
             fh.seek(size - MAX_TAIL_BYTES)
@@ -128,3 +155,10 @@ def hits(n=20):
     lines = data.decode(errors="replace").splitlines()
     h = [ln for ln in lines if any(p in ln.lower() for p in pats)]
     return h[-n:], len(h), len(lines)
+
+
+def fatal_hits(n=20):
+    """Like hits() but scoped to FATAL_PATTERNS — the verdict-gating subset that
+    `health` consumes (high precision, so a real crash fails the gate without a
+    soft warning falsely failing a healthy app)."""
+    return hits(n, patterns=FATAL_PATTERNS)

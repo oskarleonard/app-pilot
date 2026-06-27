@@ -16,7 +16,8 @@ Subcommands:
   serve         (re)start the tester's Metro (kills ONLY :PORT first), wait for UP
   recover       reconnect the app; restart Metro only if it's down
   reload        FALLBACK reload (cold-restart app) when Fast Refresh doesn't apply a change
-  health        Metro HTTP + app-vs-launcher state (on target.UDID) + backend check
+  health        Metro HTTP + app-vs-launcher state (on target.UDID) + backend +
+                idb companion + NO fatal crash since serve — the verdict gate
   status        is the tester's Metro running? pid, port holder, logfile
   stop          kill the tester's Metro + crash stream (this pid/port only)
   metrolog [N]  last N lines of the Metro log (JS warns / console / bundling)
@@ -117,25 +118,44 @@ def backend_ok():
 def app_state():
     """'app' | 'launcher' | 'springboard' | 'unknown', read from the a11y tree.
 
+    Detection is POSITIVE wherever it can be: a rig that pins APP_LABELS (a
+    label on screen ONLY when its own app is frontmost) gets 'app' only when one
+    is actually visible, and 'unknown' otherwise — so a silently-failed launch
+    (deep link not approved, app terminated → iOS home screen frontmost) can't
+    read as the running app. The old code DEFAULTED to 'app' and its springboard
+    check was English-only ("safari" AND "messages"), so a non-English home
+    screen ("Meddelanden" on a Swedish device) fell through to that default — a
+    real false PASS on a localized box. Springboard labels are config-driven now.
+
     An earlier version sampled the center pixel (its app is dark, the Expo
-    dev-launcher light) — a light-themed app means pixels can't distinguish
-    them. Instead grep labelled elements for distinctive strings. The idb tree
-    describes the FRONTMOST screen, so the iOS home screen (app terminated /
-    deep link not approved) is detectable by its dock apps. An EMPTY tree can
-    also mean the idb companion is down — `health` reports that separately;
-    treat 'unknown' as a prompt to cross-check, not a verdict.
+    dev-launcher light) — a light-themed app means pixels can't distinguish them,
+    hence the label-grep approach. An EMPTY tree can also mean the idb companion
+    is down — `health` reports that separately; treat 'unknown' as a prompt to
+    cross-check, not a verdict.
     """
     els = idb_ui.labelled(target.UDID)
     if not els:
         return "unknown"
-    labels = {e.label.lower() for e in els}
-    joined = " | ".join(labels)
-    hints = [h.lower() for h in getattr(target, "LAUNCHER_LABELS", ["development servers"])]
-    if any(h in joined for h in hints):
+    joined = " | ".join(e.label.lower() for e in els)
+
+    def has(hints):
+        return any(h.lower() in joined for h in hints)
+
+    if has(getattr(target, "LAUNCHER_LABELS", ["development servers"])):
         return "launcher"
-    if "safari" in labels and "messages" in labels:
+    app_labels = getattr(target, "APP_LABELS", [])
+    if app_labels and has(app_labels):
+        return "app"
+    # "safari" is a brand name, unlocalized → survives non-English home screens
+    # (the old "messages" half is "Meddelanden" in sv); rigs can override.
+    if has(getattr(target, "SPRINGBOARD_LABELS", ["safari"])):
         return "springboard"
-    return "app"
+    # No positive app signal. A rig that declared APP_LABELS is trusted to have
+    # named its own UI → their absence means the app isn't frontmost ('unknown',
+    # never a false 'app', so the verdict can't go green on a missed launch). A
+    # legacy rig with no APP_LABELS keeps the old optimistic default so its
+    # existing health checks don't suddenly break.
+    return "unknown" if app_labels else "app"
 
 
 def start_metro():
@@ -174,7 +194,10 @@ def cmd_serve(_):
     print(f"started Metro pid={pid} port={target.PORT} mode={target.MODE} log={target.METRO_LOG}")
     up = _wait_up()
     print(f"metro: {'UP' if up else 'still starting/down — see log'}")
-    print(f"crash-log stream pid={crashlog.start()} -> {target.CRASHLOG}")
+    # fresh=True: each serve starts a NEW QA session, so reset the crash log to
+    # a clean baseline — the health crash-gate then reflects only crashes since
+    # THIS serve, not one left over from a prior session's still-live stream.
+    print(f"crash-log stream pid={crashlog.start(fresh=True)} -> {target.CRASHLOG}")
     if target.MODE == "mock" and LOCAL_BACKEND_URL and not backend_ok():
         print(f"WARNING: local backend {LOCAL_BACKEND_URL} is DOWN — mock mode needs it: "
               f"`{_BACKEND_HINT}`")
@@ -281,8 +304,15 @@ def cmd_health(_):
     # Short timeout: a dead companion must not stall the health gate for 30s.
     companion = idb_ui.companion_alive(target.UDID, timeout=5)
     print(f"idb companion: {'UP' if companion else 'DOWN — run `app-pilot recover`'}")
+    # Crash gate: a red-box / native-fatal in the captured crash log means the
+    # app is broken even when Metro + companion are up and the tree reads 'app'.
+    # Fold it into the verdict so `health` can't report a false PASS on a crashed
+    # app (the worst class of failure for the engine that verifies its own fixes).
+    # FATAL subset only — softer markers stay advisory via `app-pilot crashes`.
+    _, fatal, _ = crashlog.fatal_hits()
+    print(f"crashes: {f'{fatal} FATAL hit(s) — see `app-pilot crashes`' if fatal else 'none'}")
     # Non-zero when any pillar is down so skills/scripts can gate on `app-pilot health`.
-    if not (metro and backend and companion and state == "app"):
+    if not (metro and backend and companion and state == "app" and not fatal):
         sys.exit(1)
 
 
