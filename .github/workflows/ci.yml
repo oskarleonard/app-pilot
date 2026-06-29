@@ -1,0 +1,34 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Public repo → Actions minutes are free. A light, reliable gate: every PR gets a
+# green check to merge against, and the munin-dashboard squash-merge has CI to
+# gate on (its merge path refuses a no-CI repo).
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Syntax-compile the engine — catches broken Python before it lands.
+      # Meaningful even before a formal test suite exists.
+      - name: Compile-check Python
+        run: python -m compileall -q common web mobile templates
+
+      # The tests are stdlib unittest; pytest runs them and handles the per-dir
+      # sibling imports they rely on. Exit 5 = "no tests collected" → fine until a
+      # PR adds tests (e.g. mobile/core/test_verdict.py's 14), so 0 and 5 both pass.
+      - name: Run tests (pytest)
+        run: |
+          python -m pip install --quiet pytest
+          code=0
+          python -m pytest -q || code=$?
+          if [ "$code" -ne 0 ] && [ "$code" -ne 5 ]; then exit "$code"; fi
