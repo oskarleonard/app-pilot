@@ -185,11 +185,13 @@ class HealthGateTests(unittest.TestCase):
         # the per-test crashlog.fatal_hits stubs below) can't leak into another
         # test class by execution order. getattr is read here, pre-patch.
         for mod, name in ((devserver, "metro_ok"), (devserver, "app_state"),
-                          (crashlog, "fatal_hits"), (_idb, "companion_alive")):
+                          (crashlog, "fatal_hits"), (crashlog, "status"),
+                          (_idb, "companion_alive")):
             self.addCleanup(setattr, mod, name, getattr(mod, name))
         devserver.metro_ok = lambda: True
         _idb.companion_alive = lambda udid, timeout=5: True
         devserver.app_state = lambda: "app"
+        crashlog.status = lambda: (123, True, 4096)  # crash-capture stream alive
 
     def _exit_code(self):
         with contextlib.redirect_stdout(io.StringIO()):
@@ -212,31 +214,43 @@ class HealthGateTests(unittest.TestCase):
         devserver.app_state = lambda: "springboard"
         self.assertEqual(self._exit_code(), 1)
 
+    def test_dead_capture_stream_fails_even_when_all_else_green(self):
+        # A dead crash-log stream reads 0 fatals from a frozen log — health must
+        # FAIL (gate is blind), not silently pass on the worst-class false PASS.
+        crashlog.fatal_hits = lambda: ([], 0, 0)
+        crashlog.status = lambda: (None, False, 0)  # stream down
+        self.assertEqual(self._exit_code(), 1)
+
 
 class VerdictTests(unittest.TestCase):
     """The pure pass/fail policy — green iff every pillar is up, the app is
-    frontmost, and no fatal crash. Tested directly: no monkeypatching, no stdout
-    capture, no SystemExit, so the engine's most safety-critical line is the one
-    thing that's trivially and exhaustively checkable."""
+    frontmost, crash capture is live, and no fatal crash. Tested directly: no
+    monkeypatching, no stdout capture, no SystemExit, so the engine's most
+    safety-critical line is the one thing that's trivially and exhaustively
+    checkable. Args: (metro, backend, companion, state, fatal, capture_alive)."""
 
     def test_all_green_is_pass(self):
-        self.assertTrue(devserver.verdict(True, True, True, "app", 0))
+        self.assertTrue(devserver.verdict(True, True, True, "app", 0, True))
 
     def test_each_pillar_down_fails(self):
-        self.assertFalse(devserver.verdict(False, True, True, "app", 0))  # metro
-        self.assertFalse(devserver.verdict(True, False, True, "app", 0))  # backend
-        self.assertFalse(devserver.verdict(True, True, False, "app", 0))  # companion
+        self.assertFalse(devserver.verdict(False, True, True, "app", 0, True))  # metro
+        self.assertFalse(devserver.verdict(True, False, True, "app", 0, True))  # backend
+        self.assertFalse(devserver.verdict(True, True, False, "app", 0, True))  # companion
 
     def test_non_app_state_fails(self):
         for state in ("springboard", "launcher", "unknown"):
-            self.assertFalse(devserver.verdict(True, True, True, state, 0))
+            self.assertFalse(devserver.verdict(True, True, True, state, 0, True))
 
     def test_fatal_crash_fails_even_when_all_else_green(self):
-        self.assertFalse(devserver.verdict(True, True, True, "app", 1))
+        self.assertFalse(devserver.verdict(True, True, True, "app", 1, True))
+
+    def test_dead_capture_stream_fails_even_when_all_else_green(self):
+        # No fatal counted, but the stream is down → the gate is blind → red.
+        self.assertFalse(devserver.verdict(True, True, True, "app", 0, False))
 
     def test_returns_strict_bool(self):
-        self.assertIs(devserver.verdict(True, True, True, "app", 0), True)
-        self.assertIs(devserver.verdict(True, True, True, "app", 5), False)
+        self.assertIs(devserver.verdict(True, True, True, "app", 0, True), True)
+        self.assertIs(devserver.verdict(True, True, True, "app", 5, True), False)
 
 
 if __name__ == "__main__":

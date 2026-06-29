@@ -313,14 +313,19 @@ def cmd_reload(_):
     print(f"app state: {app_state()}")
 
 
-def verdict(metro, backend, companion, state, fatal):
+def verdict(metro, backend, companion, state, fatal, capture_alive):
     """The health pass/fail decision as ONE pure function (no I/O, no printing):
-    green only when every pillar is up, the app is positively frontmost, and no
-    fatal crash was captured since serve. `fatal` is a count (0 = none). This is
-    the single most safety-critical expression in the engine — keeping it pure
-    makes it exhaustively unit-testable without monkeypatching probes or capturing
-    stdout, and there's exactly one place the verdict lives."""
-    return bool(metro and backend and companion and state == "app" and not fatal)
+    green only when every pillar is up, the app is positively frontmost, crash
+    capture is live, and no fatal crash was captured since serve. `fatal` is a
+    count (0 = none). `capture_alive` closes a false PASS the fatal count alone
+    can't see: a DEAD crash-log stream keeps a frozen log, so fatal_hits() reads 0
+    and the gate goes green while blind to the very crashes it exists to catch —
+    so a down stream must fail health, not silently pass. This is the single most
+    safety-critical expression in the engine — keeping it pure makes it
+    exhaustively unit-testable without monkeypatching probes or capturing stdout,
+    and there's exactly one place the verdict lives."""
+    return bool(metro and backend and companion and state == "app"
+                and not fatal and capture_alive)
 
 
 def cmd_health(_):
@@ -344,11 +349,20 @@ def cmd_health(_):
     # Fold it into the verdict so `health` can't report a false PASS on a crashed
     # app (the worst class of failure for the engine that verifies its own fixes).
     # FATAL subset only — softer markers stay advisory via `app-pilot crashes`.
+    # capture_alive guards the OTHER false PASS: a DEAD crash-log stream leaves a
+    # frozen log, so fatal_hits() reads 0 and the gate goes blind — a down stream
+    # must fail health (re-`serve`/`recover` respawns it), never silently pass.
+    _, capture_alive, _ = crashlog.status()
     _, fatal, _ = crashlog.fatal_hits()
-    crash_detail = f"{fatal} FATAL hit(s) — see `app-pilot crashes`" if fatal else "none"
+    if not capture_alive:
+        crash_detail = "capture DOWN — crash gate blind, run `app-pilot serve`"
+    elif fatal:
+        crash_detail = f"{fatal} FATAL hit(s) — see `app-pilot crashes`"
+    else:
+        crash_detail = "none"
     print(f"crashes: {crash_detail}")
     # Non-zero when the verdict is red so skills/scripts can gate on `app-pilot health`.
-    if not verdict(metro, backend, companion, state, fatal):
+    if not verdict(metro, backend, companion, state, fatal, capture_alive):
         sys.exit(1)
 
 
