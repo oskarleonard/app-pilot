@@ -42,8 +42,8 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
 ## Run a QA loop
 1. **Own Metro:** `app-pilot serve` (starts Metro AND force-reloads the app from it — a
    foregrounded app may be running another Metro's bundle) → `app-pilot health` (metro UP
-   + backend UP (if pinned) + app state `app` + idb companion UP — all green
-   before iter 1; anything off → `app-pilot recover`).
+   + backend UP (if pinned) + app state `app` + idb companion UP + no fatal crash
+   since serve — all green before iter 1; anything off → `app-pilot recover`).
 2. **(fix mode) Clean tree + branch:** require a clean `git status` — if dirty, STOP
    and have the human commit/stash first (never entangle their work). Then create +
    checkout `qa-auto/<scope>-<STAMP>` off the current branch; remember the base

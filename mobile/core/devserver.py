@@ -16,7 +16,8 @@ Subcommands:
   serve         (re)start the tester's Metro (kills ONLY :PORT first), wait for UP
   recover       reconnect the app; restart Metro only if it's down
   reload        FALLBACK reload (cold-restart app) when Fast Refresh doesn't apply a change
-  health        Metro HTTP + app-vs-launcher state (on target.UDID) + backend check
+  health        Metro HTTP + app-vs-launcher state (on target.UDID) + backend +
+                idb companion + NO fatal crash since serve — the verdict gate
   status        is the tester's Metro running? pid, port holder, logfile
   stop          kill the tester's Metro + crash stream (this pid/port only)
   metrolog [N]  last N lines of the Metro log (JS warns / console / bundling)
@@ -117,24 +118,68 @@ def backend_ok():
 def app_state():
     """'app' | 'launcher' | 'springboard' | 'unknown', read from the a11y tree.
 
-    An earlier version sampled the center pixel (its app is dark, the Expo
-    dev-launcher light) — a light-themed app means pixels can't distinguish
-    them. Instead grep labelled elements for distinctive strings. The idb tree
-    describes the FRONTMOST screen, so the iOS home screen (app terminated /
-    deep link not approved) is detectable by its dock apps. An EMPTY tree can
-    also mean the idb companion is down — `health` reports that separately;
+    Detection is POSITIVE wherever it can be: a rig that pins APP_LABELS (a label
+    visible ONLY inside its own running UI — a tab/header/content string) gets
+    'app' only when one is actually visible, else 'unknown'. The launcher and the
+    iOS home screen (springboard) are matched FIRST, so a silently-failed launch
+    (deep link not approved → app terminated → home screen frontmost) is caught
+    before the app check and can't read as the running app.
+
+    LIMITATION — why APP_LABELS must be app-EXCLUSIVE: this greps a11y labels, so
+    it cannot perfectly tell a missed launch from a running app if an APP_LABEL
+    also appears on the home screen. E.g. APP_LABELS=["Settings"] matches the
+    undeletable iOS Settings icon, and your app's own DISPLAY NAME labels its
+    home-screen icon — either is a false PASS. The springboard check is a
+    best-effort backstop: it only fires when a known home-screen icon (default
+    "Safari") is visible, which a folder/Control-Center overlay/custom layout can
+    hide. The real protection is choosing APP_LABELS that never appear on the
+    home screen (an in-app tab/header, NOT the app name or a system-app name).
+    Fully closing the gap needs a frontmost-bundle-id probe (idb exposes no such
+    call today) — tracked as a follow-up.
+
+    The old code checked the app BEFORE the home screen and required an
+    English-only "safari" AND "messages" springboard, so a non-English home
+    screen ("Meddelanden" on a Swedish device) fell through to a 'app' default —
+    a false PASS on a localized box. An earlier version sampled the center pixel
+    (its app is dark, the Expo dev-launcher light) — a light-themed app means
+    pixels can't distinguish them, hence the label-grep approach. An EMPTY tree
+    can also mean the idb companion is down — `health` reports that separately;
     treat 'unknown' as a prompt to cross-check, not a verdict.
     """
     els = idb_ui.labelled(target.UDID)
     if not els:
         return "unknown"
-    labels = {e.label.lower() for e in els}
+    labels = [e.label.lower() for e in els]
     joined = " | ".join(labels)
-    hints = [h.lower() for h in getattr(target, "LAUNCHER_LABELS", ["development servers"])]
-    if any(h in joined for h in hints):
+
+    # `hints or []`: a rig may PIN a label var to None (not just omit it), which
+    # getattr's default can't catch — degrade to "no match" rather than crash the
+    # engine's most safety-critical probe on a config typo.
+    def has_text(hints):
+        """Substring match anywhere in the tree — for phrase/partial signals."""
+        return any(h.lower() in joined for h in (hints or []))
+
+    def has_icon(hints):
+        """Match an exact app/dock ICON label (e.g. "Safari"), tolerating a
+        trailing a11y suffix like ", 3 new items" or ", tab, 2 of 5". Anchored
+        at the label start, so an in-app "Open in Safari" button never matches."""
+        heads = {lbl.split(",", 1)[0].strip() for lbl in labels}
+        return any(h.lower() in heads for h in (hints or []))
+
+    if has_text(getattr(target, "LAUNCHER_LABELS", ["development servers"])):
         return "launcher"
-    if "safari" in labels and "messages" in labels:
+    # Home screen BEFORE the app check so a detected springboard wins over a
+    # coincidental APP_LABEL match. "safari" is an unlocalized brand and a dock
+    # icon's exact label → locale-safe; rigs can override SPRINGBOARD_LABELS.
+    if has_icon(getattr(target, "SPRINGBOARD_LABELS", ["safari"])):
         return "springboard"
+    app_labels = getattr(target, "APP_LABELS", [])
+    if app_labels:
+        # Strict rig: 'app' only when its own label is positively visible, else
+        # 'unknown' — a missed launch can never read as the running app.
+        return "app" if has_text(app_labels) else "unknown"
+    # Legacy rig (no APP_LABELS) keeps the old optimistic default so its existing
+    # health checks don't suddenly break.
     return "app"
 
 
@@ -174,7 +219,10 @@ def cmd_serve(_):
     print(f"started Metro pid={pid} port={target.PORT} mode={target.MODE} log={target.METRO_LOG}")
     up = _wait_up()
     print(f"metro: {'UP' if up else 'still starting/down — see log'}")
-    print(f"crash-log stream pid={crashlog.start()} -> {target.CRASHLOG}")
+    # fresh=True: each serve starts a NEW QA session, so reset the crash log to
+    # a clean baseline — the health crash-gate then reflects only crashes since
+    # THIS serve, not one left over from a prior session's still-live stream.
+    print(f"crash-log stream pid={crashlog.start(fresh=True)} -> {target.CRASHLOG}")
     if target.MODE == "mock" and LOCAL_BACKEND_URL and not backend_ok():
         print(f"WARNING: local backend {LOCAL_BACKEND_URL} is DOWN — mock mode needs it: "
               f"`{_BACKEND_HINT}`")
@@ -265,6 +313,21 @@ def cmd_reload(_):
     print(f"app state: {app_state()}")
 
 
+def verdict(metro, backend, companion, state, fatal, capture_alive):
+    """The health pass/fail decision as ONE pure function (no I/O, no printing):
+    green only when every pillar is up, the app is positively frontmost, crash
+    capture is live, and no fatal crash was captured since serve. `fatal` is a
+    count (0 = none). `capture_alive` closes a false PASS the fatal count alone
+    can't see: a DEAD crash-log stream keeps a frozen log, so fatal_hits() reads 0
+    and the gate goes green while blind to the very crashes it exists to catch —
+    so a down stream must fail health, not silently pass. This is the single most
+    safety-critical expression in the engine — keeping it pure makes it
+    exhaustively unit-testable without monkeypatching probes or capturing stdout,
+    and there's exactly one place the verdict lives."""
+    return bool(metro and backend and companion and state == "app"
+                and not fatal and capture_alive)
+
+
 def cmd_health(_):
     print(f"target: udid={target.UDID[:8]}… port={target.PORT} mode={target.MODE} "
           f"bundle={target.BUNDLE}")
@@ -281,8 +344,25 @@ def cmd_health(_):
     # Short timeout: a dead companion must not stall the health gate for 30s.
     companion = idb_ui.companion_alive(target.UDID, timeout=5)
     print(f"idb companion: {'UP' if companion else 'DOWN — run `app-pilot recover`'}")
-    # Non-zero when any pillar is down so skills/scripts can gate on `app-pilot health`.
-    if not (metro and backend and companion and state == "app"):
+    # Crash gate: a red-box / native-fatal in the captured crash log means the
+    # app is broken even when Metro + companion are up and the tree reads 'app'.
+    # Fold it into the verdict so `health` can't report a false PASS on a crashed
+    # app (the worst class of failure for the engine that verifies its own fixes).
+    # FATAL subset only — softer markers stay advisory via `app-pilot crashes`.
+    # capture_alive guards the OTHER false PASS: a DEAD crash-log stream leaves a
+    # frozen log, so fatal_hits() reads 0 and the gate goes blind — a down stream
+    # must fail health (re-`serve`/`recover` respawns it), never silently pass.
+    _, capture_alive, _ = crashlog.status()
+    _, fatal, _ = crashlog.fatal_hits()
+    if not capture_alive:
+        crash_detail = "capture DOWN — crash gate blind, run `app-pilot serve`"
+    elif fatal:
+        crash_detail = f"{fatal} FATAL hit(s) — see `app-pilot crashes`"
+    else:
+        crash_detail = "none"
+    print(f"crashes: {crash_detail}")
+    # Non-zero when the verdict is red so skills/scripts can gate on `app-pilot health`.
+    if not verdict(metro, backend, companion, state, fatal, capture_alive):
         sys.exit(1)
 
 
