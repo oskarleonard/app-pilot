@@ -152,16 +152,19 @@ def app_state():
     labels = [e.label.lower() for e in els]
     joined = " | ".join(labels)
 
+    # `hints or []`: a rig may PIN a label var to None (not just omit it), which
+    # getattr's default can't catch — degrade to "no match" rather than crash the
+    # engine's most safety-critical probe on a config typo.
     def has_text(hints):
         """Substring match anywhere in the tree — for phrase/partial signals."""
-        return any(h.lower() in joined for h in hints)
+        return any(h.lower() in joined for h in (hints or []))
 
     def has_icon(hints):
         """Match an exact app/dock ICON label (e.g. "Safari"), tolerating a
         trailing a11y suffix like ", 3 new items" or ", tab, 2 of 5". Anchored
         at the label start, so an in-app "Open in Safari" button never matches."""
         heads = {lbl.split(",", 1)[0].strip() for lbl in labels}
-        return any(h.lower() in heads for h in hints)
+        return any(h.lower() in heads for h in (hints or []))
 
     if has_text(getattr(target, "LAUNCHER_LABELS", ["development servers"])):
         return "launcher"

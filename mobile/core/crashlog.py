@@ -157,7 +157,10 @@ def hits(n=20, patterns=None):
     if not os.path.exists(target.CRASHLOG):
         return [], 0, 0
     size = os.path.getsize(target.CRASHLOG)
-    pats = [p.lower() for p in (patterns or PATTERNS)]
+    # Case-insensitive match: lower the patterns once here, each line at match time.
+    # `is None` (not `or`): an explicit empty list means "match nothing", not
+    # "fall back to the full advisory set".
+    pats = [p.lower() for p in (PATTERNS if patterns is None else patterns)]
     with open(target.CRASHLOG, "rb") as fh:
         if size > MAX_TAIL_BYTES:
             fh.seek(size - MAX_TAIL_BYTES)

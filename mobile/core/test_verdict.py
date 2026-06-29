@@ -130,6 +130,15 @@ class AppStateTests(unittest.TestCase):
         _target.APP_LABELS = ["my feed", "compose"]
         self.assertEqual(self._state("Phone", "Calendar", "Photos"), "unknown")
 
+    def test_none_label_config_degrades_without_crashing(self):
+        # A rig may PIN a label var to None rather than omit it — getattr's default
+        # only fires when the attr is ABSENT, so app_state must still not TypeError.
+        for attr in ("LAUNCHER_LABELS", "SPRINGBOARD_LABELS", "APP_LABELS"):
+            self.addCleanup(setattr, _target, attr, getattr(_target, attr))
+            setattr(_target, attr, None)
+        # Nothing can match → falls through to the legacy optimistic default, no crash.
+        self.assertEqual(self._state("Mystery", "Screen"), "app")
+
 
 class CrashGateTests(unittest.TestCase):
     def setUp(self):
@@ -155,6 +164,12 @@ class CrashGateTests(unittest.TestCase):
     def test_fatal_hits_count_only_fatal_subset(self):
         _, fatal, _ = crashlog.fatal_hits()
         self.assertEqual(fatal, 2)
+
+    def test_empty_patterns_matches_nothing_not_all(self):
+        # hits(patterns=[]) means "match nothing" — it must NOT silently fall back
+        # to the full advisory PATTERNS set (the `[] or PATTERNS` trap).
+        _, total, _ = crashlog.hits(patterns=[])
+        self.assertEqual(total, 0)
 
     def test_fatal_hits_zero_when_no_log(self):
         _target.CRASHLOG = "/tmp/this-file-does-not-exist-xyz.log"
