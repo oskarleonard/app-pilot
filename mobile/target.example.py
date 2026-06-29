@@ -45,20 +45,25 @@ LAUNCHER_LABELS = [
     "failed to load app",
 ]
 
-# app_state() POSITIVE app detection — a11y label(s) on screen ONLY when YOUR
-# app is frontmost (a tab title, a screen header, a logo's accessibilityLabel —
-# read `app-pilot tree`, don't guess). STRONGLY recommended: when set, health/
-# recover report 'app' ONLY when one is actually visible, so a silently-failed
-# launch (home screen frontmost) reads 'unknown' instead of a false 'app' the
-# verdict would pass. Leave it unset to keep the old optimistic default (assume
-# 'app' when not the launcher/home screen) — weaker, can't confirm your app.
-APP_LABELS = ["home", "settings"]
+# app_state() POSITIVE app detection — a11y label(s) visible ONLY inside YOUR
+# app's running UI (an in-app tab title, screen header, or content string — read
+# `app-pilot tree`, don't guess). STRONGLY recommended: when set, health/recover
+# report 'app' ONLY when one is actually visible, so a silently-failed launch
+# (home screen frontmost) reads 'unknown' instead of a false 'app' the verdict
+# would pass. Unset = the old optimistic default (assume 'app' when not the
+# launcher/home screen) — weaker, can't confirm your app.
+#   ⚠ MUST be app-EXCLUSIVE. Do NOT use iOS system-app names ("Settings", "Home",
+#   "Safari", …) or your app's own DISPLAY NAME — those also label icons on the
+#   home screen, so a missed launch would still match one and falsely PASS. Pick
+#   something that shows up only while your app is actually running.
+APP_LABELS = ["My Feed", "Compose"]  # ← replace with your app's own in-app labels
 
-# app_state() springboard (iOS home-screen) detection. Default ["safari"] is a
-# brand name, so it survives non-English locales — the old hardcoded check also
-# required "messages", which is "Meddelanden" on a Swedish device, so a localized
-# home screen was misread as the app (a false PASS). Override if your own UI
-# carries a "Safari" label (then prefer APP_LABELS above for the real signal).
+# app_state() springboard (iOS home-screen) detection. Matched as an EXACT icon
+# label (tolerant of a trailing badge like ", 3 new items"), so an in-app "Open
+# in Safari" button is NOT mistaken for the home screen. Default ["safari"] is a
+# brand name → survives non-English locales (the old check also required
+# "messages" = "Meddelanden" in sv, so a localized home screen was misread as the
+# app — a false PASS). Override only if your own UI shows an exact "Safari" label.
 SPRINGBOARD_LABELS = ["safari"]
 
 # OS crash-log stream predicate (substring of the app's process image path).

@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Verdict-reliability tests for the mobile engine — run headless (NO simulator).
 
-Covers the two ways `health` could report a verdict greener than reality:
+Covers the ways `health` could report a verdict greener (or redder) than reality:
   1. crashlog.fatal_hits() — only the high-confidence FATAL subset gates health,
      soft/advisory markers do not (no false FAIL on a healthy app).
-  2. app_state() — POSITIVE app detection + locale-safe springboard, so a missed
-     launch (home screen frontmost, any locale) never reads as the running app.
-  3. cmd_health() exit code folds the crash gate in (a crashed app fails health).
+  2. app_state() — springboard/launcher checked BEFORE the app, springboard by
+     exact (badge-tolerant) icon match, so a missed launch (home screen frontmost,
+     any locale) doesn't read as the app and an in-app "Open in Safari" button
+     doesn't read as the home screen.
+  3. verdict() — the pure pass/fail decision, tested directly (no monkeypatching).
+  4. cmd_health() exit code folds the crash gate + verdict in.
 
 We stub `target`/`idb_ui`/`common` in sys.modules so the real `crashlog` and
 `devserver` import without a sim, then drive the pure classification/gate logic.
@@ -97,6 +100,36 @@ class AppStateTests(unittest.TestCase):
         _target.APP_LABELS = []
         self.assertEqual(self._state("Phone", "Safari", "Messages"), "springboard")
 
+    def test_missed_launch_home_screen_beats_colliding_app_label(self):
+        # Home screen is checked BEFORE the app, so even an APP_LABEL that collides
+        # with a system-app icon ("settings"/"home") can't make a missed launch
+        # read as the app. Regression: the old order returned "app" here — the
+        # worst-class false PASS.
+        self.assertEqual(
+            self._state("Phone", "Safari", "Settings", "Home", "Messages"),
+            "springboard")
+
+    def test_badged_springboard_icon_still_detected(self):
+        # iOS icon a11y labels carry a badge suffix (", N new items"); the exact
+        # icon match is anchored at the label head, so it still matches.
+        self.assertEqual(
+            self._state("Phone", "Safari, 3 new items", "Settings"), "springboard")
+
+    def test_app_screen_with_open_in_safari_is_not_springboard(self):
+        # "safari" is a substring of "Open in Safari", but springboard is an EXACT
+        # icon match, so a real app screen with that button is NOT misread as the
+        # home screen. Regression: the substring check returned "springboard"
+        # (a false FAIL). Legacy rig → falls through to the optimistic 'app'.
+        _target.APP_LABELS = []
+        self.assertEqual(self._state("My Feed", "Open in Safari", "Compose"), "app")
+
+    def test_app_exclusive_label_absent_on_home_screen_is_not_app(self):
+        # The real protection against a false PASS is app-EXCLUSIVE labels: a home
+        # screen never carries them, so even with no Safari icon visible it reads
+        # 'unknown', never 'app'.
+        _target.APP_LABELS = ["my feed", "compose"]
+        self.assertEqual(self._state("Phone", "Calendar", "Photos"), "unknown")
+
 
 class CrashGateTests(unittest.TestCase):
     def setUp(self):
@@ -133,6 +166,12 @@ class HealthGateTests(unittest.TestCase):
     crash flips it to 1 even when everything else is green."""
 
     def setUp(self):
+        # Restore the real module callables after each test so these patches (and
+        # the per-test crashlog.fatal_hits stubs below) can't leak into another
+        # test class by execution order. getattr is read here, pre-patch.
+        for mod, name in ((devserver, "metro_ok"), (devserver, "app_state"),
+                          (crashlog, "fatal_hits"), (_idb, "companion_alive")):
+            self.addCleanup(setattr, mod, name, getattr(mod, name))
         devserver.metro_ok = lambda: True
         _idb.companion_alive = lambda udid, timeout=5: True
         devserver.app_state = lambda: "app"
@@ -157,6 +196,32 @@ class HealthGateTests(unittest.TestCase):
         crashlog.fatal_hits = lambda: ([], 0, 0)
         devserver.app_state = lambda: "springboard"
         self.assertEqual(self._exit_code(), 1)
+
+
+class VerdictTests(unittest.TestCase):
+    """The pure pass/fail policy — green iff every pillar is up, the app is
+    frontmost, and no fatal crash. Tested directly: no monkeypatching, no stdout
+    capture, no SystemExit, so the engine's most safety-critical line is the one
+    thing that's trivially and exhaustively checkable."""
+
+    def test_all_green_is_pass(self):
+        self.assertTrue(devserver.verdict(True, True, True, "app", 0))
+
+    def test_each_pillar_down_fails(self):
+        self.assertFalse(devserver.verdict(False, True, True, "app", 0))  # metro
+        self.assertFalse(devserver.verdict(True, False, True, "app", 0))  # backend
+        self.assertFalse(devserver.verdict(True, True, False, "app", 0))  # companion
+
+    def test_non_app_state_fails(self):
+        for state in ("springboard", "launcher", "unknown"):
+            self.assertFalse(devserver.verdict(True, True, True, state, 0))
+
+    def test_fatal_crash_fails_even_when_all_else_green(self):
+        self.assertFalse(devserver.verdict(True, True, True, "app", 1))
+
+    def test_returns_strict_bool(self):
+        self.assertIs(devserver.verdict(True, True, True, "app", 0), True)
+        self.assertIs(devserver.verdict(True, True, True, "app", 5), False)
 
 
 if __name__ == "__main__":

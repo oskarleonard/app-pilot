@@ -118,44 +118,66 @@ def backend_ok():
 def app_state():
     """'app' | 'launcher' | 'springboard' | 'unknown', read from the a11y tree.
 
-    Detection is POSITIVE wherever it can be: a rig that pins APP_LABELS (a
-    label on screen ONLY when its own app is frontmost) gets 'app' only when one
-    is actually visible, and 'unknown' otherwise — so a silently-failed launch
-    (deep link not approved, app terminated → iOS home screen frontmost) can't
-    read as the running app. The old code DEFAULTED to 'app' and its springboard
-    check was English-only ("safari" AND "messages"), so a non-English home
-    screen ("Meddelanden" on a Swedish device) fell through to that default — a
-    real false PASS on a localized box. Springboard labels are config-driven now.
+    Detection is POSITIVE wherever it can be: a rig that pins APP_LABELS (a label
+    visible ONLY inside its own running UI — a tab/header/content string) gets
+    'app' only when one is actually visible, else 'unknown'. The launcher and the
+    iOS home screen (springboard) are matched FIRST, so a silently-failed launch
+    (deep link not approved → app terminated → home screen frontmost) is caught
+    before the app check and can't read as the running app.
 
-    An earlier version sampled the center pixel (its app is dark, the Expo
-    dev-launcher light) — a light-themed app means pixels can't distinguish them,
-    hence the label-grep approach. An EMPTY tree can also mean the idb companion
-    is down — `health` reports that separately; treat 'unknown' as a prompt to
-    cross-check, not a verdict.
+    LIMITATION — why APP_LABELS must be app-EXCLUSIVE: this greps a11y labels, so
+    it cannot perfectly tell a missed launch from a running app if an APP_LABEL
+    also appears on the home screen. E.g. APP_LABELS=["Settings"] matches the
+    undeletable iOS Settings icon, and your app's own DISPLAY NAME labels its
+    home-screen icon — either is a false PASS. The springboard check is a
+    best-effort backstop: it only fires when a known home-screen icon (default
+    "Safari") is visible, which a folder/Control-Center overlay/custom layout can
+    hide. The real protection is choosing APP_LABELS that never appear on the
+    home screen (an in-app tab/header, NOT the app name or a system-app name).
+    Fully closing the gap needs a frontmost-bundle-id probe (idb exposes no such
+    call today) — tracked as a follow-up.
+
+    The old code checked the app BEFORE the home screen and required an
+    English-only "safari" AND "messages" springboard, so a non-English home
+    screen ("Meddelanden" on a Swedish device) fell through to a 'app' default —
+    a false PASS on a localized box. An earlier version sampled the center pixel
+    (its app is dark, the Expo dev-launcher light) — a light-themed app means
+    pixels can't distinguish them, hence the label-grep approach. An EMPTY tree
+    can also mean the idb companion is down — `health` reports that separately;
+    treat 'unknown' as a prompt to cross-check, not a verdict.
     """
     els = idb_ui.labelled(target.UDID)
     if not els:
         return "unknown"
-    joined = " | ".join(e.label.lower() for e in els)
+    labels = [e.label.lower() for e in els]
+    joined = " | ".join(labels)
 
-    def has(hints):
+    def has_text(hints):
+        """Substring match anywhere in the tree — for phrase/partial signals."""
         return any(h.lower() in joined for h in hints)
 
-    if has(getattr(target, "LAUNCHER_LABELS", ["development servers"])):
+    def has_icon(hints):
+        """Match an exact app/dock ICON label (e.g. "Safari"), tolerating a
+        trailing a11y suffix like ", 3 new items" or ", tab, 2 of 5". Anchored
+        at the label start, so an in-app "Open in Safari" button never matches."""
+        heads = {lbl.split(",", 1)[0].strip() for lbl in labels}
+        return any(h.lower() in heads for h in hints)
+
+    if has_text(getattr(target, "LAUNCHER_LABELS", ["development servers"])):
         return "launcher"
-    app_labels = getattr(target, "APP_LABELS", [])
-    if app_labels and has(app_labels):
-        return "app"
-    # "safari" is a brand name, unlocalized → survives non-English home screens
-    # (the old "messages" half is "Meddelanden" in sv); rigs can override.
-    if has(getattr(target, "SPRINGBOARD_LABELS", ["safari"])):
+    # Home screen BEFORE the app check so a detected springboard wins over a
+    # coincidental APP_LABEL match. "safari" is an unlocalized brand and a dock
+    # icon's exact label → locale-safe; rigs can override SPRINGBOARD_LABELS.
+    if has_icon(getattr(target, "SPRINGBOARD_LABELS", ["safari"])):
         return "springboard"
-    # No positive app signal. A rig that declared APP_LABELS is trusted to have
-    # named its own UI → their absence means the app isn't frontmost ('unknown',
-    # never a false 'app', so the verdict can't go green on a missed launch). A
-    # legacy rig with no APP_LABELS keeps the old optimistic default so its
-    # existing health checks don't suddenly break.
-    return "unknown" if app_labels else "app"
+    app_labels = getattr(target, "APP_LABELS", [])
+    if app_labels:
+        # Strict rig: 'app' only when its own label is positively visible, else
+        # 'unknown' — a missed launch can never read as the running app.
+        return "app" if has_text(app_labels) else "unknown"
+    # Legacy rig (no APP_LABELS) keeps the old optimistic default so its existing
+    # health checks don't suddenly break.
+    return "app"
 
 
 def start_metro():
@@ -288,6 +310,16 @@ def cmd_reload(_):
     print(f"app state: {app_state()}")
 
 
+def verdict(metro, backend, companion, state, fatal):
+    """The health pass/fail decision as ONE pure function (no I/O, no printing):
+    green only when every pillar is up, the app is positively frontmost, and no
+    fatal crash was captured since serve. `fatal` is a count (0 = none). This is
+    the single most safety-critical expression in the engine — keeping it pure
+    makes it exhaustively unit-testable without monkeypatching probes or capturing
+    stdout, and there's exactly one place the verdict lives."""
+    return bool(metro and backend and companion and state == "app" and not fatal)
+
+
 def cmd_health(_):
     print(f"target: udid={target.UDID[:8]}… port={target.PORT} mode={target.MODE} "
           f"bundle={target.BUNDLE}")
@@ -310,9 +342,10 @@ def cmd_health(_):
     # app (the worst class of failure for the engine that verifies its own fixes).
     # FATAL subset only — softer markers stay advisory via `app-pilot crashes`.
     _, fatal, _ = crashlog.fatal_hits()
-    print(f"crashes: {f'{fatal} FATAL hit(s) — see `app-pilot crashes`' if fatal else 'none'}")
-    # Non-zero when any pillar is down so skills/scripts can gate on `app-pilot health`.
-    if not (metro and backend and companion and state == "app" and not fatal):
+    crash_detail = f"{fatal} FATAL hit(s) — see `app-pilot crashes`" if fatal else "none"
+    print(f"crashes: {crash_detail}")
+    # Non-zero when the verdict is red so skills/scripts can gate on `app-pilot health`.
+    if not verdict(metro, backend, companion, state, fatal):
         sys.exit(1)
 
 

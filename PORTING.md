@@ -29,13 +29,22 @@ Mobile:
 - `LAUNCHER_LABELS` — strings distinctive of the Expo dev-launcher AND the
   dev-client error screen ("there was a problem loading the project",
   "failed to load app").
-- `APP_LABELS` — **strongly recommended** — a11y label(s) on screen ONLY when
-  your app is frontmost (a tab title / header / logo `accessibilityLabel`). With
-  it, `health`/`recover` report `app` only when one is visible, so a missed
-  launch reads `unknown` instead of a false `app`. Unset = the old optimistic
-  default (can't positively confirm your app).
+- `APP_LABELS` — **strongly recommended** — a11y label(s) visible ONLY inside
+  your app's running UI (an in-app tab title / header / content string). With it,
+  `health`/`recover` report `app` only when one is visible, so a missed launch
+  reads `unknown` instead of a false `app`. Unset = the old optimistic default
+  (can't positively confirm your app). **MUST be app-exclusive:** never an iOS
+  system-app name (`Settings`/`Home`/`Safari`) nor your app's own display name —
+  those also label home-screen icons, so a missed launch would still match one
+  and falsely PASS (label-grep can't distinguish that case; a frontmost-bundle-id
+  probe would, but idb exposes none today — follow-up).
 - `SPRINGBOARD_LABELS` — iOS home-screen signal; default `["safari"]` (a brand
-  name, so locale-safe). Override only if your UI carries a "Safari" label.
+  name, so locale-safe). Matched as an **exact icon label** (tolerant of a `", N
+  new items"` badge), so an in-app "Open in Safari" button isn't mistaken for the
+  home screen. Checked BEFORE `APP_LABELS` so a detected home screen wins. Override
+  only if your own UI shows an exact "Safari" label. NOTE the trade: a legacy rig
+  (no `APP_LABELS`) whose UI shows an exact "Safari" label now reads `springboard`
+  (a false FAIL — re-check; safer than a false PASS).
 - `LOG_PROCESS_HINT` — substring of the app's process name (crash-log predicate).
 - `/tmp/<project>-tester-*` artifact paths — **namespace per project**.
 - `MODE`/`METRO_ENV` — the app's own mock/dev flags. Gotcha: Expo's dev
@@ -86,7 +95,10 @@ down.
 6. **Light-themed apps break pixel-based app detection** — `app_state()`
    greps the a11y tree (`LAUNCHER_LABELS` / `APP_LABELS` / `SPRINGBOARD_LABELS`)
    instead. Pin `APP_LABELS` so a frontmost app is confirmed POSITIVELY — without
-   it a silently-failed launch (home screen) can read as a false `app`.
+   it a silently-failed launch (home screen) can read as a false `app`. The
+   `APP_LABELS` you pin must be app-EXCLUSIVE (see "Per-app values"): a
+   system-app name or your app's display name also labels a home-screen icon, so
+   it would still match a missed launch.
 7. **The Simulator can be headless** — `simctl`/`idb` work with the window
    hidden/unfocused/on another Space.
 8. **First boot after adding a JS dep may crash native** — transitive NATIVE

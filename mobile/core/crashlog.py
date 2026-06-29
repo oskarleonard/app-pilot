@@ -32,27 +32,40 @@ PREDICATE = 'subsystem == "com.facebook.react.log"' + (
 # debug) + this tail cap.
 MAX_TAIL_BYTES = 8 * 1024 * 1024  # 8 MB
 
-PATTERNS = [
-    "Cannot find native module", "Invariant Violation", "TurboModuleRegistry",
-    "Unhandled JS Exception", "Unhandled promise rejection", "Possible Unhandled Promise",
-    "RedBox", "RCTFatal", "ExceptionsManager", "Terminating app due to uncaught",
-    "*** Terminating", "fatal error", "Fatal Exception", "EXC_BAD", "facebook::react",
+# Crash-log line markers, each tagged with whether it's FATAL — a line that
+# means the app is genuinely broken (red-box / native crash / fatal abort), as
+# opposed to a soft warning. `devserver health` gates its verdict on the FATAL
+# subset ONLY: a false PASS on a crashed app is the worst failure for the engine
+# that verifies its own fixes, so health must go red on a real crash — while a
+# soft marker must NOT falsely FAIL a healthy app (a false FAIL is its own
+# reliability bug). The advisory (fatal=False) markers stay reportable via
+# `crashes` but never gate health:
+#   - "Unhandled promise rejection"/"Possible Unhandled Promise" can be caught
+#     or dev-only;
+#   - "ExceptionsManager"/"TurboModuleRegistry"/"facebook::react" appear in
+#     non-fatal native logs too.
+# PATTERNS (what `crashes` scans) and FATAL_PATTERNS (the health gate) are both
+# DERIVED from this one table, so the subset relationship can never silently
+# drift — add a marker once, here, with its fatal flag.
+_MARKERS = [
+    ("Cannot find native module", True),
+    ("Invariant Violation", True),
+    ("TurboModuleRegistry", False),
+    ("Unhandled JS Exception", True),
+    ("Unhandled promise rejection", False),
+    ("Possible Unhandled Promise", False),
+    ("RedBox", True),
+    ("RCTFatal", True),
+    ("ExceptionsManager", False),
+    ("Terminating app due to uncaught", True),
+    ("*** Terminating", True),
+    ("fatal error", True),
+    ("Fatal Exception", True),
+    ("EXC_BAD", True),
+    ("facebook::react", False),
 ]
-
-# A high-confidence subset of PATTERNS: lines that mean the app is genuinely
-# broken (red-box / native crash / fatal abort), not a soft warning. The
-# `devserver health` verdict gates on THIS set — a false PASS on a crashed app
-# is the worst failure for the engine that verifies its own fixes, so health
-# must go red on a real crash. The softer markers left out here
-# ("Unhandled promise rejection"/"Possible Unhandled Promise" can be caught or
-# dev-only; "ExceptionsManager"/"TurboModuleRegistry"/"facebook::react" appear
-# in non-fatal native logs too) stay advisory-only via `crashes`, so they can't
-# turn a healthy app's gate red — a false FAIL is its own reliability bug.
-FATAL_PATTERNS = [
-    "Cannot find native module", "Invariant Violation", "Unhandled JS Exception",
-    "RedBox", "RCTFatal", "Terminating app due to uncaught", "*** Terminating",
-    "fatal error", "Fatal Exception", "EXC_BAD",
-]
+PATTERNS = [m for m, _ in _MARKERS]
+FATAL_PATTERNS = [m for m, fatal in _MARKERS if fatal]
 
 
 def _pid():
@@ -92,11 +105,9 @@ def start(fresh=False):
     over from a previous session whose stream happened to still be alive.
     `recover` keeps the default (idempotent) so it never drops in-flight capture.
     """
-    pid = _pid()
     if fresh:
-        stop()  # kill any live stream + clear the pidfile -> next open("w") truncates
-        pid = _pid()
-    if alive(pid):
+        stop()  # kills any live stream + clears the pidfile; always re-spawn below
+    elif alive(pid := _pid()):
         return pid
     # Open with "w" (truncates any stale file from a prior session). Default
     # log level — NOT `--level debug`, which captures the entire React Native
