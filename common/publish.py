@@ -143,12 +143,17 @@ def main():
         sys.exit(f"image not found: {a.image}")
     os.chdir(git("rev-parse", "--show-toplevel"))
 
-    # GitHub serves an extensionless blob as octet-stream, so an <img src=…>
-    # pointing at it renders broken. If the chosen name has no extension,
-    # borrow the source image's so the published URL always renders inline.
-    name = a.name or os.path.basename(a.image)
+    # The store filename must carry an image extension — GitHub serves an
+    # extensionless blob as octet-stream, so an <img src=…> at it renders
+    # broken. --name is a filename, not a path, so take its basename; if it
+    # has no extension borrow the source image's, and if even that yields none
+    # (extensionless source) fail loud rather than publish a silently-broken URL.
+    name = os.path.basename(a.name or a.image)
     if not os.path.splitext(name)[1]:
         name += os.path.splitext(a.image)[1]
+    if not os.path.splitext(name)[1]:
+        sys.exit(f"cannot derive an image extension for {name!r} — give --name a "
+                 "name ending in an image extension, or publish a source file that has one")
     dest = f"{a.feature.strip('/')}/{name}"
     base = remote_base()
 
