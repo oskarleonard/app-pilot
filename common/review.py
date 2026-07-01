@@ -50,6 +50,7 @@ import datetime
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -122,13 +123,13 @@ def which_ensemble():
 
 
 # ── argv assembly (config < CLI overrides) ──────────────────────────────────────
-def build_argv(ensemble, out, repo_root, cfg, args):
+def build_argv(ensemble, out, repo_root, cfg, args, run_id):
     """The `ensemble-ai review` argv. We do NOT pass --no-fail-on-high: we WANT
     ensemble's exit 4 (HIGH present) as the gate signal, then apply our own host
-    policy (fail_on_high) on top."""
-    argv = [ensemble, "review", "--out", out, "--cwd", repo_root]
-    if args.run_id:
-        argv += ["--run-id", args.run_id]
+    policy (fail_on_high) on top. `run_id` is ALWAYS passed: ensemble writes its
+    per-reviewer trail into `<out>/<run_id>/`, so we must know it to read back
+    the exact subdir (see trail_subdir)."""
+    argv = [ensemble, "review", "--out", out, "--cwd", repo_root, "--run-id", run_id]
 
     base = args.base or cfg.get("base")
     if base:
@@ -165,6 +166,16 @@ def _load_stored(path):
         return None
 
 
+def trail_subdir(out_dir, run_id):
+    """ensemble-ai persists each reviewer's `review.<id>.json` into
+    `<out>/<sanitized run_id>/` (its reviewDir), NOT `<out>/` directly. Mirror its
+    sanitize (cli.js sanitizePathSegment: non-[A-Za-z0-9._-] → '_', empty →
+    'unknown') so we read back the exact subdir it wrote — and, because run_id is
+    fresh per invocation, only THIS run's files (never a prior run's leftovers)."""
+    safe = re.sub(r"[^A-Za-z0-9._-]", "_", run_id) or "unknown"
+    return os.path.join(out_dir, safe)
+
+
 def parse_trail(out_dir):
     """Read ensemble-ai's per-reviewer `review.<id>.json` (StoredReview) files
     from the trail dir into a compact record: per-reviewer tally + total counts.
@@ -172,15 +183,25 @@ def parse_trail(out_dir):
     reviewers = []
     counts = {s: 0 for s in SEVERITIES}
     files = sorted(glob.glob(os.path.join(out_dir, "review.*.json")))
-    # Pre-fan-out runs wrote a bare `review.json` (always codex) — include it.
+    # A pre-fan-out ensemble wrote a single bare `review.json` (always codex);
+    # include it as a fallback. Fan-out files sort first, so the dedup-by-reviewer
+    # below prefers a real `review.<id>.json` and skips a stray legacy copy of the
+    # same reviewer — no double count.
     legacy = os.path.join(out_dir, "review.json")
     if os.path.exists(legacy):
         files.append(legacy)
+    seen = set()
     for f in files:
         stored = _load_stored(f)
         if not isinstance(stored, dict):
             continue
-        rid = stored.get("reviewerId") or stored.get("reviewer", {}).get("vendor") or "?"
+        # `reviewer` may be present-but-null in a partial trail (a reviewer that
+        # died before vendor/model resolved) — `or {}` guards the .get chain.
+        reviewer = stored.get("reviewer") or {}
+        rid = stored.get("reviewerId") or reviewer.get("vendor") or "?"
+        if rid in seen:
+            continue  # same reviewer already tallied (legacy copy beside a fan-out file)
+        seen.add(rid)
         state = stored.get("terminalState", "?")
         findings = stored.get("findings") or []
         per = {s: 0 for s in SEVERITIES}
@@ -191,8 +212,8 @@ def parse_trail(out_dir):
                 counts[sev] += 1
         reviewers.append({
             "id": rid,
-            "vendor": stored.get("reviewer", {}).get("vendor"),
-            "model": stored.get("reviewer", {}).get("model"),
+            "vendor": reviewer.get("vendor"),
+            "model": reviewer.get("model"),
             "terminalState": state,
             "counts": per,
             "summary": (stored.get("summary") or "").strip()[:200],
@@ -217,8 +238,13 @@ def compute_verdict(exit_code, trail):
     status, gate, note = EXIT_MEANING.get(
         exit_code, ("error", "error", f"ensemble-ai exited {exit_code}")
     )
-    # exit 0 with MED/LOW findings is still "findings", not bare "clean".
-    if exit_code == 0 and (trail["counts"]["medium"] or trail["counts"]["low"]):
+    c = trail["counts"]
+    # Trust the trail over a clean exit: if ensemble exits 0 yet a HIGH sits in
+    # the trail (contract drift / partial write), don't under-report it as pass.
+    if exit_code == 0 and c["high"]:
+        status, gate, note = "high", "fail", "trail carries a HIGH finding despite a clean exit"
+    # exit 0 with only MED/LOW findings is still "findings", not bare "clean".
+    elif exit_code == 0 and (c["medium"] or c["low"]):
         status = "findings"
     return {"status": status, "gate": gate, "note": note}
 
@@ -309,11 +335,15 @@ def cmd_review(args):
         return _skip(run_dir, out_dir, "ensemble-ai-not-found",
                      f"`{ENSEMBLE_BIN}` not on PATH — install it: {INSTALL_HINT}")
 
-    argv = build_argv(ensemble, out_dir, repo_root, cfg, args)
+    # Own the run id: pass it to ensemble AND use it to read back the exact
+    # `<out>/<run_id>/` subdir it writes into. A fresh id per run also means we
+    # only ever tally THIS run's trail, never a reused dir's leftovers.
+    run_id = args.run_id or datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    argv = build_argv(ensemble, out_dir, repo_root, cfg, args, run_id)
     print(f"app-pilot review: {' '.join(argv)}", file=sys.stderr)
     exit_code = run_ensemble(argv, args.timeout)
 
-    trail = parse_trail(out_dir)
+    trail = parse_trail(trail_subdir(out_dir, run_id))
     verdict = compute_verdict(exit_code, trail)
     tally = one_line(trail)
 
@@ -329,6 +359,7 @@ def cmd_review(args):
         "reviewers": trail["reviewers"],
         "tally": tally,
         "trailDir": out_dir,
+        "runId": run_id,  # per-reviewer files live in <trailDir>/<runId>/
         "timestamp": datetime.datetime.now().isoformat(timespec="seconds"),
     }
     _write_summary(out_dir, summary)
