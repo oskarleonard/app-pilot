@@ -74,6 +74,10 @@ EXIT_MEANING = {
     4: ("high", "fail", "review completed WITH a HIGH finding"),
 }
 
+# The severity tiers ensemble-ai emits, ordered high→low. Single-sourced so the
+# per-reviewer tally, the totals, and the one-line summary never drift apart.
+SEVERITIES = ("high", "medium", "low")
+
 
 # ── per-repo config (AST-read, never import — a mobile target.py resolves a sim
 #    on import and would sys.exit without one) ──────────────────────────────────
@@ -82,7 +86,8 @@ def load_config(project_dir=PROJECT_DIR):
     executing it. Any parse problem degrades to {} (review then defaults to off)."""
     path = os.path.join(project_dir, "target.py")
     try:
-        tree = ast.parse(open(path).read())
+        with open(path) as fh:
+            tree = ast.parse(fh.read())
     except (OSError, SyntaxError):
         return {}
     for node in tree.body:
@@ -154,7 +159,8 @@ def build_argv(ensemble, out, repo_root, cfg, args):
 # ── trail parsing (ensemble-ai's typed per-reviewer StoredReview files) ─────────
 def _load_stored(path):
     try:
-        return json.load(open(path))
+        with open(path) as fh:
+            return json.load(fh)
     except (OSError, ValueError):
         return None
 
@@ -164,7 +170,7 @@ def parse_trail(out_dir):
     from the trail dir into a compact record: per-reviewer tally + total counts.
     Reuses ensemble-ai's typed format verbatim — one review shape, no drift."""
     reviewers = []
-    counts = {"high": 0, "medium": 0, "low": 0}
+    counts = {s: 0 for s in SEVERITIES}
     files = sorted(glob.glob(os.path.join(out_dir, "review.*.json")))
     # Pre-fan-out runs wrote a bare `review.json` (always codex) — include it.
     legacy = os.path.join(out_dir, "review.json")
@@ -177,7 +183,7 @@ def parse_trail(out_dir):
         rid = stored.get("reviewerId") or stored.get("reviewer", {}).get("vendor") or "?"
         state = stored.get("terminalState", "?")
         findings = stored.get("findings") or []
-        per = {"high": 0, "medium": 0, "low": 0}
+        per = {s: 0 for s in SEVERITIES}
         for fnd in findings:
             sev = (fnd or {}).get("severity")
             if sev in per:
@@ -198,7 +204,7 @@ def _tally(r):
     if r["terminalState"] != "reviewed":
         return f"{r['id']} {r['terminalState']}"
     c = r["counts"]
-    parts = [f"{c[s]}{s[0].upper()}" for s in ("high", "medium", "low") if c[s]]
+    parts = [f"{c[s]}{s[0].upper()}" for s in SEVERITIES if c[s]]
     return f"{r['id']} {'/'.join(parts) if parts else 'clean'}"
 
 
@@ -223,7 +229,8 @@ def resolve_run_dir(run_arg):
         os.makedirs(run_arg, exist_ok=True)
         return run_arg
     if os.path.exists(CURRENT):
-        run = open(CURRENT).read().strip()
+        with open(CURRENT) as fh:
+            run = fh.read().strip()
         if os.path.isdir(run):
             return run
     # No current run — create a standalone one so a born-reviewed pre-PR check
