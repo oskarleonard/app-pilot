@@ -92,12 +92,18 @@ def load_config(project_dir=PROJECT_DIR):
     except (OSError, SyntaxError):
         return {}
     for node in tree.body:
-        if not isinstance(node, ast.Assign):
+        # Match both `REVIEW = {...}` (Assign) and an annotated
+        # `REVIEW: dict = {...}` (AnnAssign) — a typed target.py uses the latter.
+        if isinstance(node, ast.Assign):
+            names, value = [t for t in node.targets if isinstance(t, ast.Name)], node.value
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names, value = [node.target], node.value  # value is None for a bare annotation
+        else:
             continue
-        if any(isinstance(t, ast.Name) and t.id == "REVIEW" for t in node.targets):
+        if value is not None and any(n.id == "REVIEW" for n in names):
             try:
-                value = ast.literal_eval(node.value)
-                return value if isinstance(value, dict) else {}
+                literal = ast.literal_eval(value)
+                return literal if isinstance(literal, dict) else {}
             except (ValueError, SyntaxError):
                 return {}
     return {}
@@ -174,6 +180,20 @@ def trail_subdir(out_dir, run_id):
     fresh per invocation, only THIS run's files (never a prior run's leftovers)."""
     safe = re.sub(r"[^A-Za-z0-9._-]", "_", run_id) or "unknown"
     return os.path.join(out_dir, safe)
+
+
+def clear_trail(trail_dir):
+    """Remove any prior per-reviewer trail files from the target subdir before a
+    run, so a caller-supplied (reused) run_id can't carry a previous run's
+    evidence — or a since-dropped reviewer's stale file — into this tally. Only
+    touches the files we parse; leaves the dir and anything else untouched."""
+    stale = glob.glob(os.path.join(trail_dir, "review.*.json"))
+    stale.append(os.path.join(trail_dir, "review.json"))
+    for f in stale:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
 
 
 def parse_trail(out_dir):
@@ -261,7 +281,7 @@ def resolve_run_dir(run_arg):
             return run
     # No current run — create a standalone one so a born-reviewed pre-PR check
     # works without a full QA session first.
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")  # %f: no same-second collision
     run = os.path.join(RUNS, f"{stamp}__review")
     os.makedirs(run, exist_ok=True)
     return run
@@ -339,11 +359,13 @@ def cmd_review(args):
     # `<out>/<run_id>/` subdir it writes into. A fresh id per run also means we
     # only ever tally THIS run's trail, never a reused dir's leftovers.
     run_id = args.run_id or datetime.datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    trail_dir = trail_subdir(out_dir, run_id)
+    clear_trail(trail_dir)  # a reused/caller-supplied run_id must not inherit stale files
     argv = build_argv(ensemble, out_dir, repo_root, cfg, args, run_id)
     print(f"app-pilot review: {' '.join(argv)}", file=sys.stderr)
     exit_code = run_ensemble(argv, args.timeout)
 
-    trail = parse_trail(trail_subdir(out_dir, run_id))
+    trail = parse_trail(trail_dir)
     verdict = compute_verdict(exit_code, trail)
     tally = one_line(trail)
 
@@ -375,7 +397,9 @@ def cmd_review(args):
     fail_on_high = args.fail_on_high
     if fail_on_high is None:
         fail_on_high = bool(cfg.get("fail_on_high"))
-    if fail_on_high and exit_code == 4:
+    # Fail on a HIGH by EITHER signal: ensemble's exit 4, OR a HIGH parsed from the
+    # trail on a clean exit (the contract-drift case compute_verdict already gates).
+    if fail_on_high and (exit_code == 4 or trail["counts"]["high"]):
         print("  → FAILING the QA pass: a HIGH finding is present (fail_on_high).", file=sys.stderr)
         return 1
     return 0

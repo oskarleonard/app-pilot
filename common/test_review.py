@@ -80,6 +80,14 @@ class LoadConfig(unittest.TestCase):
         )
         self.assertEqual(review.load_config(d), {"enabled": True})
 
+    def test_reads_annotated_review_dict(self):
+        # A typed target.py may write `REVIEW: dict = {...}` (AnnAssign) — it must
+        # still be read, not silently treated as absent (→ review disabled).
+        d = self._write_target("REVIEW: dict = {'enabled': True, 'reviewers': ['grok']}\n")
+        cfg = review.load_config(d)
+        self.assertTrue(cfg["enabled"])
+        self.assertEqual(cfg["reviewers"], ["grok"])
+
 
 class BuildArgv(unittest.TestCase):
     def test_config_and_overrides(self):
@@ -296,6 +304,31 @@ class CmdReview(unittest.TestCase):
         )
         self.assertEqual(code, 0)
         self.assertEqual(self._summary(os.path.join(run, "review"))["gate"], "pass")
+
+    def test_fail_on_high_fires_on_trail_high_at_exit0(self):
+        # ensemble exits 0 but the trail carries a HIGH — fail_on_high must still
+        # fail the step, so the host gate never diverges from the reported verdict.
+        run = os.path.join(self.runs, "exit0-high")
+        os.makedirs(run)
+        code = self._run_with_trail(
+            0, {"codex": ("openai", ["high"], "reviewed")}, run=run, fail_on_high=True)
+        self.assertEqual(code, 1)
+
+    def test_reused_run_id_clears_stale_trail(self):
+        # A caller that reuses --run-id must not inherit a prior run's trail files:
+        # grok's stale HIGH file must be cleared before the codex-only re-run.
+        run = os.path.join(self.runs, "reuse-run")
+        os.makedirs(run)
+        self._run_with_trail(4, {"grok": ("xai", ["high"], "reviewed")}, run=run, run_id="fixed")
+        self._run_with_trail(0, {"codex": ("openai", [], "reviewed")}, run=run, run_id="fixed")
+        s = self._summary(os.path.join(run, "review"))
+        self.assertEqual([r["id"] for r in s["reviewers"]], ["codex"])
+        self.assertEqual(s["counts"], {"high": 0, "medium": 0, "low": 0})
+
+    def test_standalone_run_dirs_are_unique(self):
+        # Two standalone reviews (no .current) in the same second must not collide.
+        review.load_config = lambda *a, **k: {"enabled": False}
+        self.assertNotEqual(review.resolve_run_dir(None), review.resolve_run_dir(None))
 
     def test_trail_read_from_runid_subdir_not_shallow(self):
         # Regression for the load-bearing bug: ensemble-ai writes into
