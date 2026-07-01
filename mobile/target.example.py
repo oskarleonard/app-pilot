@@ -75,6 +75,21 @@ PIDFILE = "/tmp/myapp-pilot-metro.pid"
 CRASHLOG = "/tmp/myapp-pilot-crash.log"
 CRASHLOG_PID = "/tmp/myapp-pilot-crash.pid"
 
+# Pre-PR cross-vendor CODE review (`app-pilot review`) — OPT-IN, off by default.
+# When on, the QA pass shells out to the standalone `ensemble-ai` CLI to review
+# the branch diff, so the PR is "born reviewed" (behavior verdict + code findings
+# in one run trail). Degrades gracefully if `ensemble-ai` isn't installed. Omit
+# this dict (or enabled=False) to disable. Keep account/secret knobs in the
+# gitignored target.local, never here.
+REVIEW = {
+    "enabled": False,                # flip to True to run review in the QA pass
+    "reviewers": ["codex", "grok"],  # or omit → every configured reviewer
+    "base": None,                    # base ref override (default: auto vs default branch)
+    "sandbox": None,                 # ensemble-ai sandbox profile override
+    "allow_sensitive": False,        # review even if the diff carries sensitive paths
+    "fail_on_high": False,           # v1 report-only; True → a HIGH fails the review step
+}
+
 WINDOW = f'window "{DEVICE_NAME}"'  # legacy osascript reference only
 
 # ───────────────────── machinery — don't edit below this line ─────────────────────

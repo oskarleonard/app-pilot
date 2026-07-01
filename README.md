@@ -118,6 +118,11 @@ these under the hood. `app-pilot help` lists them all; run `app-pilot doctor` fi
 - **Inspect / drive:** `tree` · `shot <label>` · `tap` · `type` · `scroll` · `find` · `target`
 - **Ground truth:** `check` (assert the project's invariants) · `snapshot`/`diff` (state deltas around an action)
 - **Evidence:** `publish` (host a QA screenshot off-branch for a PR)
+- **Code review:** `review` — the pre-PR **second QA axis**: shells out to the
+  standalone [`ensemble-ai`](https://github.com/oskarleonard/ensemble-ai) CLI to
+  cross-vendor review the branch diff, so a PR is *born reviewed* (behavior verdict
+  + code findings in one run trail at `runs/<run>/review/`). Opt-in per project via
+  a `REVIEW` dict in `target.py`; degrades cleanly if `ensemble-ai` isn't installed.
 
 A project can add its own named shims next to the launcher (e.g. a Figma
 fidelity check, or a watchdog that re-fires a loop on a cron) — but the launcher

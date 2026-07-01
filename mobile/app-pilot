@@ -54,6 +54,13 @@ PR evidence (hosts images OFF the PR branch — see RUNBOOK "PR evidence"):
   app-pilot inject-rules [dir]
                         insert/refresh the app-pilot-rules block in the project's AGENTS.md
 
+Pre-PR code review (the SECOND QA axis — opt-in via target.py's REVIEW dict):
+  app-pilot review [--base R] [--reviewers a,b] [--pr N|url] [--fail-on-high]
+                        cross-vendor review the branch diff via the standalone
+                        `ensemble-ai` CLI → trail beside the shots (runs/<run>/review/).
+                        "Born reviewed": behavior verdict + code findings in one run.
+                        Skips cleanly if ensemble-ai isn't installed or REVIEW is off.
+
 Ground truth (delegated to the project's product/app_pilot_api.py when present):
   app-pilot check              assert the project's invariant registry (exit 1 on fail)
   app-pilot snapshot --out f   snapshot state before a risky action
@@ -85,6 +92,8 @@ case "$cmd" in
     exec python3 "$COMMON/publish.py" "$@" ;;
   inject-rules)
     exec python3 "$COMMON/inject_rules.py" "$@" ;;
+  review)
+    exec python3 "$COMMON/review.py" "$@" ;;
   check|snapshot|diff)
     for api in "$PROJ/product/app_pilot_api.py" "$PROJ/product/qa_api.py"; do
       [ -f "$api" ] && exec python3 "$api" "$cmd" "$@"
