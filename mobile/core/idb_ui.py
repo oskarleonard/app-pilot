@@ -15,7 +15,7 @@ API (coordinates are POINTS — the space idb describe-all + tap share):
   labelled(udid)         -> only elements that have a label
   find(udid, label,role) -> best Element matching label (exact > substring) or None
   tap_label(udid, label) -> find + tap its frame center; returns the Element or None
-  tap_point(udid, x, y)  -> `idb ui tap x y`
+  tap_point(udid, x, y)  -> `idb ui tap x y`; True iff delivered (failure -> stderr)
   tap_frac(udid, fx, fy) -> tap at a fraction of the screen (fallback for unlabelled)
   tap_tab(udid, name)    -> tap a bottom tab by name (the tab bar collapses its
                             children into one group, so we tap the n-th segment)
@@ -40,6 +40,32 @@ import target  # noqa: E402
 IDB = getattr(target, "IDB", None) or os.path.expanduser("~/.idb-venv/bin/idb")
 
 
+def _run_idb(args, timeout):
+    """subprocess.run for idb calls that can never traceback: a hung companion
+    (TimeoutExpired) or a missing idb binary (OSError) comes back as a normal
+    failed CompletedProcess (rc 124/127) the caller can report — not an
+    uncaught exception that kills the whole command mid-run."""
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return subprocess.CompletedProcess(
+            args, 124, stdout="",
+            stderr=f"timed out after {timeout}s (companion hung? run `app-pilot recover`)")
+    except OSError as e:
+        return subprocess.CompletedProcess(
+            args, 127, stdout="",
+            stderr=f"cannot run {args[0]}: {e} (run `app-pilot doctor`)")
+
+
+def _last_err(out):
+    """One-line failure detail from a CompletedProcess (last stderr line).
+    Capped: idb can emit a single multi-KB line (e.g. a bad-UDID error dumps
+    every UDID on the machine) — the head carries the actual reason."""
+    err = (out.stderr or "").strip().splitlines()
+    detail = err[-1] if err else f"exit {out.returncode}"
+    return detail[:200] + "…" if len(detail) > 200 else detail
+
+
 class Element:
     __slots__ = ("label", "role", "cx", "cy", "enabled", "frame")
 
@@ -57,10 +83,12 @@ class Element:
 
 
 def describe(udid):
-    out = subprocess.run(
-        [IDB, "ui", "describe-all", "--udid", udid],
-        capture_output=True, text=True, timeout=30,
-    )
+    out = _run_idb([IDB, "ui", "describe-all", "--udid", udid], timeout=30)
+    if out.returncode != 0:
+        # An empty tree from a FAILED read must not pass silently for "blank
+        # screen" — say why on stderr so `tree`/`tap` callers see the real cause.
+        print(f"idb describe-all failed: {_last_err(out)}", file=sys.stderr)
+        return []
     try:
         data = json.loads(out.stdout)
     except json.JSONDecodeError:
@@ -88,13 +116,7 @@ def companion_alive(udid, timeout=30):
     Callers probing in a loop (ensure_companion) pass a SHORT timeout so a
     degraded companion can't stall recovery for minutes.
     """
-    try:
-        out = subprocess.run(
-            [IDB, "ui", "describe-all", "--udid", udid],
-            capture_output=True, text=True, timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        return False
+    out = _run_idb([IDB, "ui", "describe-all", "--udid", udid], timeout=timeout)
     return out.returncode == 0 and out.stdout.lstrip().startswith("[")
 
 
@@ -165,13 +187,22 @@ def screen_size(udid):
 
 
 def tap_point(udid, x, y):
-    subprocess.run(
-        [IDB, "ui", "tap", str(round(x)), str(round(y)), "--udid", udid],
-        capture_output=True, text=True, timeout=30,
-    )
+    """Tap at device coords. Returns True iff idb delivered the tap.
+
+    A failed tap (dead/hung companion, wrong UDID, idb missing) must never
+    masquerade as a delivered one — the idb error goes to stderr and False
+    comes back, the same contract type_text() has for characters."""
+    out = _run_idb([IDB, "ui", "tap", str(round(x)), str(round(y)), "--udid", udid],
+                   timeout=30)
+    if out.returncode != 0:
+        print(f"idb tap failed: {_last_err(out)}", file=sys.stderr)
+        return False
+    return True
 
 
 def tap_label(udid, label, role=None):
+    """find + tap. Returns the Element or None (= no such label); a found-but-
+    undelivered tap is reported on stderr by tap_point."""
     el = find(udid, label, role)
     if el:
         tap_point(udid, el.cx, el.cy)
@@ -180,7 +211,7 @@ def tap_label(udid, label, role=None):
 
 def tap_frac(udid, fx, fy):
     w, h = screen_size(udid)
-    tap_point(udid, fx * w, fy * h)
+    return tap_point(udid, fx * w, fy * h)
 
 
 def type_text(udid, text):
@@ -194,10 +225,7 @@ def type_text(udid, text):
     (e.g. when the companion is down, every char silently no-ops)."""
     failures = 0
     for ch in text:
-        out = subprocess.run(
-            [IDB, "ui", "text", ch, "--udid", udid],
-            capture_output=True, text=True, timeout=15,
-        )
+        out = _run_idb([IDB, "ui", "text", ch, "--udid", udid], timeout=15)
         if out.returncode != 0:
             failures += 1
         time.sleep(0.04)
@@ -207,10 +235,7 @@ def type_text(udid, text):
 def press_key(udid, code, times=1):
     """Press a HID keycode N times (42 = backspace/clear, 40 = return)."""
     for _ in range(times):
-        subprocess.run(
-            [IDB, "ui", "key", str(code), "--udid", udid],
-            capture_output=True, text=True, timeout=15,
-        )
+        _run_idb([IDB, "ui", "key", str(code), "--udid", udid], timeout=15)
         time.sleep(0.02)
 
 
@@ -221,11 +246,11 @@ def swipe(udid, x1, y1, x2, y2, duration=0.3):
     while taps never do — but NOT on react-native-gesture-handler gestures
     (gorhom drag-to-dismiss, RNGH swipeables), which ignore idb-synthesized
     touches entirely."""
-    subprocess.run(
+    _run_idb(
         [IDB, "ui", "swipe",
          str(round(x1)), str(round(y1)), str(round(x2)), str(round(y2)),
          "--duration", str(duration), "--udid", udid],
-        capture_output=True, text=True, timeout=30,
+        timeout=30,
     )
 
 
@@ -248,9 +273,9 @@ def scroll(udid, direction="down", amount=0.35):
 
 
 def _describe_point(udid, x, y):
-    out = subprocess.run(
+    out = _run_idb(
         [IDB, "ui", "describe-point", str(round(x)), str(round(y)), "--udid", udid],
-        capture_output=True, text=True, timeout=30,
+        timeout=30,
     )
     try:
         return json.loads(out.stdout)
@@ -277,8 +302,7 @@ def tap_tab(udid, name):
         # Bar group is present in the tree.  Fall back to direct label match.
         el = find(udid, key, role="Button")
         if el:
-            tap_point(udid, el.cx, el.cy)
-            return True
+            return tap_point(udid, el.cx, el.cy)
         return False
     f = grp.frame
     gx, gw = f.get("x", 0), f.get("width", 0)
@@ -295,8 +319,7 @@ def tap_tab(udid, name):
             fr = d.get("frame") or {}
             cx = fr.get("x", x) + fr.get("width", 0) / 2
             cy = fr.get("y", y) + fr.get("height", 0) / 2
-            tap_point(udid, cx or x, cy or y)
-            return True
+            return tap_point(udid, cx or x, cy or y)
     return False
 
 

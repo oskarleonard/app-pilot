@@ -58,9 +58,9 @@ def _run_dir(args):
     if os.path.exists(CURRENT):
         run = open(CURRENT).read().strip()
         if not os.path.isdir(run):
-            sys.exit(f"current run dir is gone ({run}) — run `qa.py init` again")
+            sys.exit(f"current run dir is gone ({run}) — run `app-pilot init` again")
         return run
-    sys.exit("no current run — run `qa.py init --scope ...` first")
+    sys.exit("no current run — run `app-pilot init --scope ...` first")
 
 
 def _log(run, fname, text):
@@ -156,23 +156,31 @@ def cmd_tap(args):
         _log(run, "actions.log", f"TAP tab={args.tab} ok={ok}{note}")
         print(f"tab {args.tab} -> {ok}")
         if not ok:
-            sys.exit(f"no '{args.tab}' tab (check target.TAB_ORDER / `qa.py tree`)")
+            sys.exit(f"'{args.tab}' tab not tapped — unknown tab, not on screen, or "
+                     "idb delivery failed (check target.TAB_ORDER / `app-pilot tree` / stderr)")
     elif args.label:
         el = idb_ui.find(target.UDID, args.label, role=args.role)
         if el is None:
             _log(run, "actions.log", f"TAP label={args.label!r} -> None{note}")
-            sys.exit(f"no element labelled {args.label!r} (try `qa.py tree`)")
+            sys.exit(f"no element labelled {args.label!r} (try `app-pilot tree`)")
         blocker = None if args.force else _tap_blocker(el)
         if blocker:
             _log(run, "actions.log", f"TAP label={args.label!r} REFUSED: {blocker}{note}")
             sys.exit(f"refusing to tap {args.label!r}: {blocker} — "
                      "`app-pilot scroll` first, or pass --force")
-        idb_ui.tap_point(target.UDID, el.cx, el.cy)
+        # tap_point returns False when idb could not deliver (dead/hung
+        # companion) — a lost tap logged as success would corrupt the audit
+        # trail the whole loop replays from, so fail loud like `type` does.
+        if not idb_ui.tap_point(target.UDID, el.cx, el.cy):
+            _log(run, "actions.log", f"TAP label={args.label!r} DELIVERY FAILED{note}")
+            sys.exit("idb failed to deliver the tap — check `app-pilot health` (idb companion?)")
         _log(run, "actions.log", f"TAP label={args.label!r} -> {el}{note}")
         print(f"tapped label {args.label!r} -> {el}")
     elif args.frac:
         fx, fy = (float(v) for v in args.frac.split(","))
-        idb_ui.tap_frac(target.UDID, fx, fy)
+        if not idb_ui.tap_frac(target.UDID, fx, fy):
+            _log(run, "actions.log", f"TAP frac={fx},{fy} DELIVERY FAILED{note}")
+            sys.exit("idb failed to deliver the tap — check `app-pilot health` (idb companion?)")
         _log(run, "actions.log", f"TAP frac={fx},{fy}{note}")
         print(f"tapped frac {fx},{fy}")
     else:

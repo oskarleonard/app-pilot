@@ -29,7 +29,7 @@ import subprocess
 import sys
 import zlib
 
-# `target.py` lives in the PROJECT's qa dir (e.g. scripts/app-pilot/), NOT in the
+# `target.py` lives in the PROJECT's app-pilot dir (e.g. scripts/app-pilot/), NOT in the
 # harness — that's the boundary between the portable engine and per-project
 # config. The project's shim exports APP_PILOT_PROJECT_DIR; a vendored copy of
 # this folder inside a project still works via the one-level-up fallback.
@@ -191,22 +191,16 @@ def pixel_avg(decoded, cx, cy, half=3):
 
 
 def click(x, y, udid=None):
-    """Tap at device coords via `idb ui tap` (headless — works regardless of
-    where the Simulator window is, including hidden / on another Space).
+    """Tap at device coords (kept for project ext/ layers, e.g. autoplay).
 
-    Pass an actual UDID; "booted" doesn't work here — idb rejects it with
-    `Cannot spawn companion for booted` (unlike simctl which accepts the
-    alias). Defaults to target.UDID so callers usually don't have to pass it.
-
-    stderr is NOT silenced — if idb errors (wrong UDID, companion crashed,
-    etc.) the message reaches the caller's log so we don't silently lose taps.
+    Thin delegate to idb_ui.tap_point — ONE tap implementation engine-wide, so
+    the delivery contract (True iff delivered; failure reported on stderr)
+    can't drift between paths. Defaults to target.UDID; pass an actual UDID —
+    idb rejects the "booted" alias (`Cannot spawn companion for booted`).
     """
-    if udid is None:
-        udid = target.UDID
-    subprocess.run(
-        [target.IDB, "ui", "tap", str(round(x)), str(round(y)), "--udid", udid],
-        stdout=subprocess.DEVNULL,  # idb is chatty on success; only stderr matters
-    )
+    import idb_ui  # lazy, same circular-import guard as device_size()
+
+    return idb_ui.tap_point(udid or target.UDID, x, y)
 
 
 def activate_simulator():
