@@ -26,7 +26,7 @@ Run a **app-pilot mission** — the one named in `$ARGUMENTS` — against THIS p
    - **mission** = the first token (e.g. `bug-hunt`, `scenario-exec`, `feature-dev`, `improvement`).
    - **driver** = the next token **iff** it is exactly `wake` or `goal` (else default `wake`); strip it from the request.
    - **request** = the remaining text (scope, bound, constraints) — passed through verbatim.
-2. **Resolve the harness** (same chain as the `qa` shim): `$APP_PILOT_HOME` if set
+2. **Resolve the harness** (same chain as the `app-pilot` shim): `$APP_PILOT_HOME` if set
    → else the first line of `~/.app-pilot` → else `~/programming/projects/app-pilot`.
    Call it `<harness>`.
 3. **Pick the engine** by reading the shim `<ADAPTER_DIR>/app-pilot`: its `exec`

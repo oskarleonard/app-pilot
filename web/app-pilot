@@ -1,7 +1,7 @@
 #!/bin/bash
 # app-pilot (web) engine front door (harness-resident — see repo README).
 # Always invoked through a PROJECT's scripts/app-pilot/app-pilot shim, which exports
-# APP_PILOT_PROJECT_DIR = the project's qa dir. That dir layers everything
+# APP_PILOT_PROJECT_DIR = the project's app-pilot dir. That dir layers everything
 # project-specific over this engine:
 #   target.py      pinned tester port/URLs/mode env   (committed, required)
 #   product/       ground truth + design map + rails  (optional)

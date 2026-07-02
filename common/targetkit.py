@@ -20,7 +20,7 @@ def mode_from_env(env_var, default, allowed=None):
     """Tester mode from an env var; a typo must not silently select a mode."""
     mode = os.environ.get(env_var, default)
     if allowed and mode not in allowed:
-        sys.exit(f"qa: invalid {env_var}={mode!r} — expected one of {' | '.join(allowed)}")
+        sys.exit(f"app-pilot: invalid {env_var}={mode!r} — expected one of {' | '.join(allowed)}")
     return mode
 
 

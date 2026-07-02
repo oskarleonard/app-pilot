@@ -33,7 +33,7 @@ so the choice is stable per machine forever after. To retarget: delete
 
 ```
 <project>/scripts/app-pilot/
-├── qa                   # shim → this engine (templates/shim-mobile)
+├── app-pilot            # shim → this engine (templates/shim-mobile)
 ├── target.py            # the project's pin (sim / port / bundle / mode env)
 ├── target.local         # per-machine UDID pin (gitignored, auto-written)
 ├── product/             # optional: app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md
@@ -60,8 +60,9 @@ then start your own Metro and reopen the app from it.
 
 - `core/qa.py` = deterministic mechanics + logging (cheap, no model).
 - The model decides what to test, VIEWS select screenshots, writes findings,
-  updates the journal — paced by `/app-pilot` (ScheduleWakeup) or
-  `/app-pilot` (/goal), defined per project in `.claude/commands/`.
+  updates the journal — paced by a mission's **wake** driver (ScheduleWakeup)
+  or **goal** driver (/goal), launched via the project's `/app-pilot <mission>`
+  command (`.claude/commands/app-pilot.md`).
 - **State lives on disk** (`runs/<id>/journal.md`), re-read each iteration, so
   a mid-run context compaction is survivable. See RUNBOOK.md.
 

@@ -25,4 +25,4 @@ product/
 
 A team can keep this layer in a central QA repo instead and check it out
 here (or symlink it) — the engine only cares that the files exist at
-`<qa dir>/product/`.
+`<project app-pilot dir>/product/`.

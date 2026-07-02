@@ -21,7 +21,8 @@ app-pilot/
 │   ├── app-pilot, core/, RUNBOOK.md, target.example.py
 ├── missions/      # job briefs the agent runs on the engines (bug-hunt,
 │                  #   scenario-exec, ... — schema in missions/_format.md)
-├── common/        # shared: publish.py (app-pilot-assets) + targetkit.py (target machinery)
+├── common/        # shared: publish.py (app-pilot-assets) · review.py (pre-PR
+│                  #   cross-vendor trigger) · inject_rules.py · targetkit.py
 ├── templates/     # project shims + _harness.py + product/ layer template
 └── PORTING.md     # onboarding a new project + hard-won platform gotchas
 ```
@@ -65,6 +66,10 @@ Projects resolve the harness in this order:
 3. `~/programming/projects/app-pilot` (default)
 
 If you cloned elsewhere: `echo /path/to/app-pilot > ~/.app-pilot`.
+
+Machine prerequisites are checked (with a printed fix per FAIL) by
+`app-pilot doctor` — mobile needs Xcode CLT + idb (`mobile/README.md`), web
+needs the Playwright MCP in the project (`web/README.md`).
 
 ## Onboard a project (minutes)
 

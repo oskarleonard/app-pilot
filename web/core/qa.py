@@ -60,9 +60,9 @@ def _run_dir(args):
     if os.path.exists(CURRENT):
         run = open(CURRENT).read().strip()
         if not os.path.isdir(run):
-            sys.exit(f"current run dir is gone ({run}) — run `qa.py init` again")
+            sys.exit(f"current run dir is gone ({run}) — run `app-pilot init` again")
         return run
-    sys.exit("no current run — run `qa.py init --scope ...` first")
+    sys.exit("no current run — run `app-pilot init --scope ...` first")
 
 
 def _log(run, fname, text):

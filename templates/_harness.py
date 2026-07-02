@@ -24,7 +24,7 @@ def _checked_root():
     r = root()
     if not os.path.isdir(os.path.join(r, "common")):
         sys.exit(
-            f"qa: harness not found at '{r}'. Fix one of:\n"
+            f"app-pilot: harness not found at '{r}'. Fix one of:\n"
             f"  git clone https://github.com/oskarleonard/app-pilot \"$HOME/programming/projects/app-pilot\"\n"
             f"  echo /path/to/app-pilot > ~/.app-pilot\n"
             f"  export APP_PILOT_HOME=/path/to/app-pilot"

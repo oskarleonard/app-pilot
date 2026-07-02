@@ -33,7 +33,7 @@ the run). `app-pilot shot` archival screenshots are headless regardless.
 
 ```
 <project>/scripts/app-pilot/
-├── qa                   # shim → this engine (templates/shim-web)
+├── app-pilot            # shim → this engine (templates/shim-web)
 ├── target.py            # the pin: tester port, mode env, server cmd/cwd
 ├── product/             # optional: app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md
 │                        #           + RUNBOOK.md addendum (modes/rails/scopes)

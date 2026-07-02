@@ -27,12 +27,14 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
   controls — observe and screenshot only.
 
 ## Two loop drivers (pick at invocation time)
-- **`/app-pilot`** — `ScheduleWakeup`-driven, one-step invocation. The skill does
-  preflight + every iteration + every reschedule itself. Best for interactive dev
-  sessions where you start it and walk away.
-- **`/app-pilot`** — `/goal`-driven, two-step invocation. The skill does preflight then
-  prints a ready-to-paste `/goal …` command; from there `/goal`'s Stop hook drives
-  every turn. Required for `claude -p` / Remote Control / CI pipelines.
+- **wake** (`/app-pilot <mission> wake …`, the default) — `ScheduleWakeup`-driven,
+  one-step invocation. The mission does preflight + every iteration + every
+  reschedule itself. Best for interactive dev sessions where you start it and
+  walk away.
+- **goal** (`/app-pilot <mission> goal …`) — `/goal`-driven, two-step invocation.
+  The mission does preflight then prints a ready-to-paste `/goal …` command; from
+  there `/goal`'s Stop hook drives every turn. Required for `claude -p` /
+  Remote Control / CI pipelines.
 - **Watchdog variant:** `/loop 3m /app-pilot <args> --driven` makes the
   HARNESS the pacemaker — it re-fires the skill on a fixed timer even if an
   iteration crashed before self-scheduling. The skill then never schedules its
