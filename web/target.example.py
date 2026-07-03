@@ -29,6 +29,10 @@ MODE_ENV = {
     "msw": {"NEXT_PUBLIC_MSW_MODE": "full"},
     "staging": {},
 }[MODE]
+# Every var ANY mode may set — scrubbed from the inherited shell env before
+# MODE_ENV overlays, so a flag exported in your shell can't bleed into a run
+# in another mode (e.g. staging inheriting mock-auth).
+SCRUB_ENV = ["NEXT_PUBLIC_API_URL", "NEXT_PUBLIC_MSW_MODE", "NEXT_PUBLIC_MOCK_AUTH"]
 
 # Dev-server launch: argv + repo subdir (engine sets PORT in the env).
 SERVER_CMD = ["bun", "run", "dev"]

@@ -87,6 +87,18 @@ def backend_ok():
         return False
 
 
+def _tester_env():
+    """Inherited shell env MINUS the project's mode-sensitive keys
+    (target.SCRUB_ENV — every var any mode may set), then THIS mode's own
+    vars. Stops a mode flag exported in the developer's shell from bleeding
+    into a run in another mode (e.g. staging inheriting mock-auth/MSW)."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in set(getattr(target, "SCRUB_ENV", ()))}
+    env.update(target.MODE_ENV)
+    env["PORT"] = str(target.TESTER_PORT)
+    return env
+
+
 def start_server():
     kill_port()
     time.sleep(1)
@@ -95,7 +107,7 @@ def start_server():
         _SERVER_CMD,
         cwd=_SERVER_CWD,
         stdout=log, stderr=log,
-        env={**os.environ, **target.MODE_ENV, "PORT": str(target.TESTER_PORT)},
+        env=_tester_env(),
         start_new_session=True,
     )
     with open(target.PIDFILE, "w") as fh:
@@ -171,7 +183,11 @@ def cmd_status(_):
 
 def cmd_stop(_):
     pid = _pidfile_pid()
-    if pid and _alive(pid):
+    # Reused-PID guard: killpg via the pidfile ONLY while that pid still holds
+    # the tester port — a recycled pid that merely looks like node/bun must not
+    # be killed. Anything else on the port falls to kill_port() below, whose
+    # process-group kill covers the server's children either way.
+    if pid and _alive(pid) and pid in pids_on_port():
         try:
             os.killpg(os.getpgid(pid), signal.SIGTERM)
         except Exception:

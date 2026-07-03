@@ -23,6 +23,7 @@ Subcommands (operate on the "current" run unless --run given):
 import argparse
 import datetime
 import os
+import re
 import subprocess
 import sys
 
@@ -70,15 +71,23 @@ def _log(run, fname, text):
         fh.write(f"{_now()}  {text}\n")
 
 
+def _safe_part(value):
+    """Collapse anything outside [A-Za-z0-9._-] to '-': scope/label/shot names
+    flow into directory + file paths, so a value carrying separators ('../',
+    '/') must not be able to escape the run tree."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-.") or "x"
+
+
 def cmd_init(args):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    label = args.label
+    scope = _safe_part(args.scope)
+    label = args.label and _safe_part(args.label)
     if args.driver and label:
         if not label.startswith(f"{args.driver}-"):
             label = f"{args.driver}-{label}"
     elif args.driver and not label:
         label = args.driver
-    rid = f"{stamp}__{args.scope}" + (f"__{label}" if label else "")
+    rid = f"{stamp}__{scope}" + (f"__{label}" if label else "")
     run = os.path.join(RUNS, rid)
     os.makedirs(os.path.join(run, "screenshots"), exist_ok=True)
     with open(os.path.join(run, "journal.md"), "w") as fh:
@@ -110,7 +119,7 @@ def cmd_shot(args):
     nums = [int(f.split("_", 1)[0]) for f in os.listdir(sdir)
             if f.endswith(".png") and f.split("_", 1)[0].isdigit()]
     seq = max(nums) + 1 if nums else 0
-    out = os.path.join(sdir, f"{seq:04d}_{args.label}.png")
+    out = os.path.join(sdir, f"{seq:04d}_{_safe_part(args.label)}.png")
     url = args.path if args.path.startswith("http") else target.APP_URL + args.path
     result = subprocess.run(
         [_playwright_bin(), "screenshot", "--full-page",

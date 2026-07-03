@@ -26,6 +26,10 @@ METRO_ENV = {
     "EXPO_PUBLIC_AI_TESTER": "true",
     **({"EXPO_PUBLIC_MOCK_AUTH": "true"} if MODE == "mock" else {}),
 }
+# Every var ANY mode may set — scrubbed from the inherited shell env before
+# METRO_ENV overlays, so a flag exported in your shell can't bleed into a run
+# in another mode (e.g. staging inheriting mock-auth).
+SCRUB_ENV = ["EXPO_PUBLIC_AI_TESTER", "EXPO_PUBLIC_MOCK_AUTH"]
 
 # Ground truth (omit or None = no backend; health/doctor skip the ping).
 BACKEND_URL = "http://localhost:8080"

@@ -30,6 +30,7 @@ Tapping prefers idb (accessibility-label / tab-segment / fraction, via idb_ui).
 import argparse
 import datetime
 import os
+import re
 import subprocess
 import sys
 import time
@@ -68,18 +69,26 @@ def _log(run, fname, text):
         fh.write(f"{_now()}  {text}\n")
 
 
+def _safe_part(value):
+    """Collapse anything outside [A-Za-z0-9._-] to '-': scope/label/shot names
+    flow into directory + file paths, so a value carrying separators ('../',
+    '/') must not be able to escape the run tree."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-.") or "x"
+
+
 def cmd_init(args):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # If a driver was given (wake|goal), auto-prefix the label so the resulting
     # run dir self-identifies: `<auto-ts>__<scope>__<driver>-<label>`. Lets
     # `ls runs/ | grep __wake-` / `__goal-` separate the two skills' histories.
-    label = args.label
+    scope = _safe_part(args.scope)
+    label = args.label and _safe_part(args.label)
     if args.driver and label:
         if not label.startswith(f"{args.driver}-"):
             label = f"{args.driver}-{label}"
     elif args.driver and not label:
         label = args.driver
-    rid = f"{stamp}__{args.scope}" + (f"__{label}" if label else "")
+    rid = f"{stamp}__{scope}" + (f"__{label}" if label else "")
     run = os.path.join(RUNS, rid)
     os.makedirs(os.path.join(run, "screenshots"), exist_ok=True)
     with open(os.path.join(run, "journal.md"), "w") as fh:
@@ -108,7 +117,7 @@ def cmd_shot(args):
     nums = [int(f.split("_", 1)[0]) for f in os.listdir(sdir)
             if f.endswith(".png") and f.split("_", 1)[0].isdigit()]
     seq = max(nums) + 1 if nums else 0
-    path = os.path.join(sdir, f"{seq:04d}_{args.label}.png")
+    path = os.path.join(sdir, f"{seq:04d}_{_safe_part(args.label)}.png")
     common.screenshot(path, target.UDID)
     crop = path + ".c.png"
     common.center_crop(path, crop)
