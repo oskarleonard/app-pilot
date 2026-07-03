@@ -56,16 +56,17 @@ care where the dir comes from.
 
 ## Install (once per machine)
 
+Clone **anywhere you like**, then pin the clone:
+
 ```bash
-git clone https://github.com/oskarleonard/app-pilot ~/programming/projects/app-pilot
+git clone https://github.com/oskarleonard/app-pilot
+cd app-pilot && ./install     # writes this clone's path to ~/.app-pilot
 ```
 
 Projects resolve the harness in this order:
 1. `APP_PILOT_HOME` env var
-2. `~/.app-pilot` — a one-line file containing the path
-3. `~/programming/projects/app-pilot` (default)
-
-If you cloned elsewhere: `echo /path/to/app-pilot > ~/.app-pilot`.
+2. `~/.app-pilot` — a one-line file containing the path (what `./install` writes)
+3. `~/programming/projects/app-pilot` (fallback for pin-less clones at that path)
 
 Machine prerequisites are checked (with a printed fix per FAIL) by
 `app-pilot doctor` — mobile needs Xcode CLT + idb (`mobile/README.md`), web

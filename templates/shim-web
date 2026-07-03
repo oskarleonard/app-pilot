@@ -12,10 +12,9 @@ if [ -z "$H" ] && [ -f "$HOME/.app-pilot" ]; then H="$(head -n1 "$HOME/.app-pilo
 if [ -z "$H" ]; then H="$HOME/programming/projects/app-pilot"; fi
 
 if [ ! -x "$H/web/app-pilot" ]; then
-  echo "app-pilot: harness not found at '$H'. Fix one of:" >&2
-  echo "  git clone https://github.com/oskarleonard/app-pilot \"\$HOME/programming/projects/app-pilot\"" >&2
-  echo "  echo /path/to/app-pilot > ~/.app-pilot" >&2
-  echo "  export APP_PILOT_HOME=/path/to/app-pilot" >&2
+  echo "app-pilot: engine not found at '$H'. Install it (clone ANYWHERE, then pin):" >&2
+  echo "  git clone https://github.com/oskarleonard/app-pilot && ./app-pilot/install" >&2
+  echo "(manual alternatives: echo /path/to/clone > ~/.app-pilot · export APP_PILOT_HOME=/path/to/clone)" >&2
   exit 1
 fi
 

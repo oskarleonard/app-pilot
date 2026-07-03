@@ -1,0 +1,24 @@
+#!/bin/bash
+# Pin THIS clone as the machine's app-pilot engine.
+#
+# Clone the repo ANYWHERE you like, then run ./install once — it writes this
+# clone's absolute path to ~/.app-pilot, which every project shim resolves
+# (chain: $APP_PILOT_HOME → ~/.app-pilot → ~/programming/projects/app-pilot).
+# Re-run from another clone to re-pin. No sudo, nothing outside $HOME.
+set -euo pipefail
+H="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ ! -x "$H/mobile/app-pilot" ] || [ ! -x "$H/web/app-pilot" ]; then
+  echo "install: this doesn't look like an app-pilot clone ($H)" >&2
+  exit 1
+fi
+
+printf '%s\n' "$H" > "$HOME/.app-pilot"
+echo "pinned: $H  ->  ~/.app-pilot"
+
+if [ -n "${APP_PILOT_HOME:-}" ] && [ "$APP_PILOT_HOME" != "$H" ]; then
+  echo "NOTE: \$APP_PILOT_HOME is set to '$APP_PILOT_HOME' and OVERRIDES the pin —"
+  echo "      unset it (or point it here) or this clone won't be the one used."
+fi
+
+echo "verify from a project:  scripts/app-pilot/app-pilot doctor"
