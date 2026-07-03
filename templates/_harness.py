@@ -14,7 +14,8 @@ def root():
         return env
     pin = os.path.expanduser("~/.app-pilot")
     if os.path.exists(pin):
-        v = open(pin).read().strip()
+        with open(pin) as fh:
+            v = fh.read().strip()
         if v:
             return v
     return os.path.expanduser("~/programming/projects/app-pilot")
