@@ -121,5 +121,41 @@ class EnsureProductMount(unittest.TestCase):
         self.assertIn("not mounting", err)
 
 
+class ApplyLocal(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="targetkit-local-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.target_py = os.path.join(self.root, "target.py")
+        open(self.target_py, "w").write("# pin\n")
+
+    def _overlay(self, src):
+        open(os.path.join(self.root, "target.local.py"), "w").write(src)
+
+    def test_missing_overlay_is_a_noop(self):
+        ns = {"TESTER_PORT": 3002}
+        targetkit.apply_local(ns, self.target_py)
+        self.assertEqual(ns["TESTER_PORT"], 3002)
+
+    def test_overlay_overrides_knobs(self):
+        self._overlay("TESTER_PORT = 3103\nDEVICE_NAME = 'iPhone 15'\n")
+        ns = {"TESTER_PORT": 3002}
+        targetkit.apply_local(ns, self.target_py)
+        self.assertEqual(ns["TESTER_PORT"], 3103)
+        self.assertEqual(ns["DEVICE_NAME"], "iPhone 15")
+
+    def test_overlay_can_use_prior_knobs(self):
+        # exec'd into the SAME namespace — an override may derive from team values.
+        self._overlay("TESTER_PORT = TESTER_PORT + 100\n")
+        ns = {"TESTER_PORT": 3002}
+        targetkit.apply_local(ns, self.target_py)
+        self.assertEqual(ns["TESTER_PORT"], 3102)
+
+    def test_overlay_errors_carry_its_path(self):
+        self._overlay("TESTER_PORT = \n")
+        with self.assertRaises(SyntaxError) as ctx:
+            targetkit.apply_local({}, self.target_py)
+        self.assertIn("target.local.py", ctx.exception.filename or "")
+
+
 if __name__ == "__main__":
     unittest.main()

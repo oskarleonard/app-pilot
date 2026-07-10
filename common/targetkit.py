@@ -79,6 +79,32 @@ def resolve_udid(device_name, env_var, near):
     return udid
 
 
+def apply_local(ns, near, filename="target.local.py"):
+    """Per-developer knob overrides — the gitignored half of the pin.
+
+    target.py calls this AFTER its plain knobs and BEFORE anything derived:
+
+        TESTER_PORT = 3002
+        targetkit.apply_local(globals(), __file__)
+        APP_URL = f"http://localhost:{TESTER_PORT}"   # computed AFTER overrides
+
+    The file (default `target.local.py`, next to target.py, gitignored) is
+    plain python — e.g. `TESTER_PORT = 3103` or `DEVICE_NAME = "iPhone 15"` —
+    exec'd into the pin's namespace. Missing file = no-op. Errors in it
+    propagate loudly with the overlay's own path in the traceback (it's the
+    developer's file). Team config never goes here — anything every developer
+    needs belongs in target.py. (The sim UDID keeps its own auto-written pin,
+    `target.local` — see resolve_udid; gitignore both with `target.local*`.)
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(near)), filename)
+    try:
+        with open(path) as fh:
+            src = fh.read()
+    except OSError:
+        return
+    exec(compile(src, path, "exec"), ns)
+
+
 def ensure_product_mount(near, env_var="APP_PILOT_PRODUCT_DIR"):
     """Optional central product layer. A one-line `product.pin` next to
     target.py (path to a shared checkout's product dir — relative to the
