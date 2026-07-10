@@ -79,10 +79,66 @@ def resolve_udid(device_name, env_var, near):
     return udid
 
 
+def ensure_product_mount(near, env_var="APP_PILOT_PRODUCT_DIR"):
+    """Optional central product layer. A one-line `product.pin` next to
+    target.py (path to a shared checkout's product dir — relative to the
+    adapter dir, or absolute, ~ ok) turns `product/` into a maintained
+    symlink to that checkout. Resolution: env override -> product.pin ->
+    (pin target missing: stderr hint + `product.local/` fallback). The first
+    redirect migrates a real `product/` dir to `product.local/` — that stays
+    the committed fallback for machines without the shared checkout. No pin
+    file = no-op, so plain local-product projects never notice this.
+
+    Rides every CLI touch (serve/health/--field), so the mount is fresh
+    before the agent reads product/ paths directly.
+    """
+    adapter = os.path.dirname(os.path.abspath(near))
+    mount = os.path.join(adapter, "product")
+    pin = os.environ.get(env_var, "").strip()
+    if not pin:
+        try:
+            with open(os.path.join(adapter, "product.pin")) as f:
+                pin = f.read().strip()
+        except OSError:
+            return  # no pin — this project keeps a plain local product/
+    if not pin:
+        return
+    src = os.path.abspath(os.path.join(adapter, os.path.expanduser(pin)))
+    fallback = os.path.join(adapter, "product.local")
+    if not os.path.isdir(src):
+        sys.stderr.write(
+            f"app-pilot: product pin target missing ({src}) — falling back to product.local.\n"
+            "  Clone the shared QA repo (path in product.pin) for the central product layer.\n"
+        )
+        if not os.path.isdir(fallback):
+            return  # nothing to mount; engine's no-product notices apply
+        src = fallback
+    if os.path.isdir(mount) and not os.path.islink(mount):
+        if os.path.isdir(fallback):
+            sys.stderr.write(
+                "app-pilot: both product/ (real dir) and product.local/ exist — "
+                "not mounting; merge or remove one.\n"
+            )
+            return
+        os.rename(mount, fallback)  # one-time migration to the fallback slot
+    if os.path.islink(mount):
+        if os.readlink(mount) == src:
+            return
+        os.remove(mount)
+    elif os.path.exists(mount):
+        return  # a FILE named product — never touch
+    os.symlink(src, mount)
+
+
 def cli(ns):
     """`python3 target.py --field` printer for build scripts (e.g. `npm run
     ios` reading --udid). Builds the field set from whatever the project
     defines; default field: --udid (mobile) else --url (web)."""
+    if "__file__" in ns:
+        try:
+            ensure_product_mount(ns["__file__"])
+        except OSError as err:
+            sys.stderr.write(f"app-pilot: product mount skipped: {err}\n")
     spec = [
         ("--udid", "UDID"),
         ("--port", "PORT"),

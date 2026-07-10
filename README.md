@@ -46,8 +46,13 @@ contract (`check`, `snapshot --out f`, `diff f [--expect-new N]`); without the
 file, those commands no-op with a notice.
 
 A team can also keep the product layer in a dedicated repo (e.g. a central
-QA-scenario repo) and point `product/` at that checkout — the engine doesn't
-care where the dir comes from.
+QA-scenario repo) and point `product/` at that checkout: drop a one-line
+`product.pin` next to `target.py` (the shared dir's path, relative to the
+adapter dir or absolute; `APP_PILOT_PRODUCT_DIR` env overrides) and the
+engine keeps `product/` symlinked to it on every CLI touch. The first
+redirect migrates a committed `product/` to `product.local/`, which stays
+the fallback (with a clone hint on stderr) on machines without the shared
+checkout. Gitignore `product` once pinned. No pin file — no behavior change.
 
 **Missions** sit on top of all of this: `missions/*.md` are job briefs
 (bug-hunt, scenario-exec, ...) launched by ~10-line shims in each project's
@@ -80,7 +85,8 @@ needs the Playwright MCP in the project (`web/README.md`).
 2. Copy `mobile/target.example.py` (or `web/`) next to it as `target.py` and
    edit its CONFIG section — values only; the machinery (sim auto-resolve,
    the `--field` CLI) comes from `common/targetkit.py` via `_harness.py`.
-3. Gitignore `runs/`, `target.local`, `__pycache__/` in that dir.
+3. Gitignore `runs/`, `target.local`, `__pycache__/` in that dir (plus
+   `product` if you pin a shared product checkout via `product.pin`).
 4. Optional: add `product/` (start from `templates/product-README.md`) and
    `ext/`.
 5. Smoke test: `app-pilot doctor` → `app-pilot serve` → `app-pilot health` → (mobile) `app-pilot tree`.
