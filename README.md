@@ -35,7 +35,7 @@ project's app-pilot dir (`scripts/app-pilot/`, same for mobile and web):
 
 | Layer | File(s) | Required? |
 |---|---|---|
-| **Pin** | `target.py` (+ gitignored `target.local`) — sim/port/bundle/mode env, server cmd | yes |
+| **Pin** | `target.py` — sim/port/bundle/mode env, server cmd (team defaults) — plus gitignored per-dev files: `target.local.py` (knob overrides via `targetkit.apply_local`) and `target.local` (auto-written sim pin) | yes |
 | **Ground truth & product brain** | `product/` — `app_pilot_api.py` (`app-pilot check/snapshot/diff`), `INVARIANTS.md`, `FIGMA_MAP.md`, `RUNBOOK.md` addendum (modes, rails, scopes) | no |
 | **Project commands** | `ext/<name>{,.py,.sh}` — any extra subcommand (`app-pilot <name>`), e.g. an autoplay layer for timed gameplay | no |
 | **Output** | `runs/` (gitignored) | auto |
@@ -85,8 +85,11 @@ needs the Playwright MCP in the project (`web/README.md`).
 2. Copy `mobile/target.example.py` (or `web/`) next to it as `target.py` and
    edit its CONFIG section — values only; the machinery (sim auto-resolve,
    the `--field` CLI) comes from `common/targetkit.py` via `_harness.py`.
-3. Gitignore `runs/`, `target.local`, `__pycache__/` in that dir (plus
+3. Gitignore `runs/`, `target.local*`, `__pycache__/` in that dir (plus
    `product` if you pin a shared product checkout via `product.pin`).
+   `target.local.py` is each developer's knob overlay — port, sim, URLs —
+   exec'd over target.py's team defaults; headless-vs-headful for web is the
+   developer's own `.mcp.json` (the playwright `--headless` arg).
 4. Optional: add `product/` (start from `templates/product-README.md`) and
    `ext/`.
 5. Smoke test: `app-pilot doctor` → `app-pilot serve` → `app-pilot health` → (mobile) `app-pilot tree`.

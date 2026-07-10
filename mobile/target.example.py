@@ -84,7 +84,7 @@ CRASHLOG_PID = "/tmp/myapp-pilot-crash.pid"
 # the branch diff, so the PR is "born reviewed" (behavior verdict + code findings
 # in one run trail). Degrades gracefully if `ensemble-ai` isn't installed. Omit
 # this dict (or enabled=False) to disable. Keep account/secret knobs in the
-# gitignored target.local, never here.
+# gitignored target.local.py, never here.
 REVIEW = {
     "enabled": False,                # flip to True to run review in the QA pass
     "reviewers": ["codex", "grok"],  # or omit → every configured reviewer
@@ -94,6 +94,15 @@ REVIEW = {
     "fail_on_high": False,           # v1 report-only; True → a HIGH fails the review step
 }
 
+
+# ── per-developer overrides (OPTIONAL) ──────────────────────────────────────
+# A gitignored `target.local.py` next to this file is exec'd HERE — plain
+# python overriding any knob above (`PORT = 8192`, `DEVICE_NAME = "iPhone 15"`).
+# Mode is chosen per run via the env var above. The sim UDID keeps its own
+# auto-written pin (`target.local`). Gitignore `target.local*`.
+targetkit.apply_local(globals(), __file__)
+
+# ── derived — don't edit below this line ───────────────────────────────────
 WINDOW = f'window "{DEVICE_NAME}"'  # legacy osascript reference only
 
 # ───────────────────── machinery — don't edit below this line ─────────────────────
