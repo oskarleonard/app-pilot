@@ -59,8 +59,8 @@ Layered on top (this mission commits code, so they are strict):
   plan, name the branch — but make no commits until granted (Options `mode`).
 - **Money/destructive-flow audit** (same as bug-hunt): `app-pilot shot` before and
   `app-pilot act CONFIRM <what>` on every Confirm/Send/Approve/Submit the feature
-  introduces; forbidden outright in a staging/real mode. Product rails name the
-  app's no-go actions.
+  introduces; in a staging/real mode only where the product rails allow writes
+  (read-mostly is the default). Product rails name the app's no-go actions.
 - **The author does not solely grade the work.** Done-criteria are objective
   (each criterion observed live); recommend a fresh, non-author verifier on the
   PR — the maker's reasoning trail biases its own grading.

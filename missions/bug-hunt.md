@@ -28,8 +28,9 @@ Mission-level reminders (the ones that gate every round):
   new-dependency ones (the engine RUNBOOK's Fix flow defines the classes).
 - **Money/destructive-flow audit:** `app-pilot shot` BEFORE and `app-pilot act CONFIRM
   <what>` on EVERY Confirm/Send/Approve/Submit interaction; in a
-  staging/real mode those interactions are FORBIDDEN. Product rails name the
-  app's specific no-go actions (e.g. sign-out under mock auth).
+  staging/real mode do them only where the product rails allow writes
+  (read-mostly is the default). Product rails name the app's specific no-go
+  actions (e.g. sign-out under mock auth).
 - **(mobile)** Tap by a11y label (`app-pilot tree` first); an unlabelled interactive
   element is itself a finding. Sheets: dismiss via labelled buttons or the
   product's tester-escape; verify dismissal via `app-pilot tree`.
