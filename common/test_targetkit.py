@@ -110,6 +110,38 @@ class EnsureProductMount(unittest.TestCase):
         self.assertEqual(self._marker(mount), "env")
         self.assertEqual(err, "")
 
+    def test_pin_local_beats_committed_pin(self):
+        self._shared("qa-team", "team")
+        self._shared("qa-mine", "mine")
+        self._pin(os.path.join(self.root, "qa-team"))
+        open(os.path.join(self.adapter, "product.pin.local"), "w").write(
+            os.path.join(self.root, "qa-mine") + "\n"
+        )
+        mount, err = self._mount()
+        self.assertEqual(self._marker(mount), "mine")
+        self.assertEqual(err, "")
+
+    def test_empty_pin_local_falls_back_to_committed_pin(self):
+        self._shared("qa-team2", "team")
+        self._pin(os.path.join(self.root, "qa-team2"))
+        open(os.path.join(self.adapter, "product.pin.local"), "w").write("\n")
+        mount, _ = self._mount()
+        self.assertEqual(self._marker(mount), "team")
+
+    def test_env_var_beats_pin_local(self):
+        env_dir = self._shared("qa-env2", "env")
+        self._shared("qa-mine2", "mine")
+        open(os.path.join(self.adapter, "product.pin.local"), "w").write(
+            os.path.join(self.root, "qa-mine2") + "\n"
+        )
+        self._pin("../nowhere")
+        os.environ["APP_PILOT_PRODUCT_DIR"] = env_dir
+        try:
+            mount, _ = self._mount()
+        finally:
+            del os.environ["APP_PILOT_PRODUCT_DIR"]
+        self.assertEqual(self._marker(mount), "env")
+
     def test_both_real_dirs_refuses(self):
         self._shared("qa3", "shared")
         self._local("product", "local")
