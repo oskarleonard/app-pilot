@@ -48,11 +48,13 @@ file, those commands no-op with a notice.
 A team can also keep the product layer in a dedicated repo (e.g. a central
 QA-scenario repo) and point `product/` at that checkout: drop a one-line
 `product.pin` next to `target.py` (the shared dir's path, relative to the
-adapter dir or absolute; `APP_PILOT_PRODUCT_DIR` env overrides) and the
-engine keeps `product/` symlinked to it on every CLI touch. The first
+adapter dir or absolute) and the engine keeps `product/` symlinked to it on
+every CLI touch. Per-developer relocation without touching the committed
+pin: a gitignored `product.pin.local` (same one-line format) wins over
+`product.pin`, and the `APP_PILOT_PRODUCT_DIR` env var wins over both. The first
 redirect migrates a committed `product/` to `product.local/`, which stays
 the fallback (with a clone hint on stderr) on machines without the shared
-checkout. Gitignore `product` once pinned. No pin file — no behavior change.
+checkout. Gitignore `product` and `product.pin.local` once pinned. No pin file — no behavior change.
 
 **Missions** sit on top of all of this: `missions/*.md` are job briefs
 (bug-hunt, scenario-exec, ...) launched by ~10-line shims in each project's

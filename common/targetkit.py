@@ -109,7 +109,8 @@ def ensure_product_mount(near, env_var="APP_PILOT_PRODUCT_DIR"):
     """Optional central product layer. A one-line `product.pin` next to
     target.py (path to a shared checkout's product dir — relative to the
     adapter dir, or absolute, ~ ok) turns `product/` into a maintained
-    symlink to that checkout. Resolution: env override -> product.pin ->
+    symlink to that checkout. Resolution: env override -> gitignored
+    product.pin.local (per-developer path) -> product.pin (team default) ->
     (pin target missing: stderr hint + `product.local/` fallback). The first
     redirect migrates a real `product/` dir to `product.local/` — that stays
     the committed fallback for machines without the shared checkout. No pin
@@ -122,13 +123,18 @@ def ensure_product_mount(near, env_var="APP_PILOT_PRODUCT_DIR"):
     mount = os.path.join(adapter, "product")
     pin = os.environ.get(env_var, "").strip()
     if not pin:
-        try:
-            with open(os.path.join(adapter, "product.pin")) as f:
-                pin = f.read().strip()
-        except OSError:
-            return  # no pin — this project keeps a plain local product/
+        # Per-developer redirect first (gitignored — same idea as
+        # target.local.py), then the committed team pin.
+        for name in ("product.pin.local", "product.pin"):
+            try:
+                with open(os.path.join(adapter, name)) as f:
+                    pin = f.read().strip()
+            except OSError:
+                continue
+            if pin:
+                break
     if not pin:
-        return
+        return  # no pin — this project keeps a plain local product/
     src = os.path.abspath(os.path.join(adapter, os.path.expanduser(pin)))
     fallback = os.path.join(adapter, "product.local")
     if not os.path.isdir(src):
