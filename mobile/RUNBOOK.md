@@ -22,9 +22,10 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
   world: writes are local, so exercising real flows is allowed AND wanted.
   Preflight: if the project pins a `BACKEND_URL`, it must answer (`app-pilot health`
   checks; if DOWN, STOP and tell the human the start command — health prints it).
-- A **staging/real** mode (if the product defines one) flips the rails to
-  **read-mostly**: never tap Confirm / Send / Approve / Submit / Delete-style
-  controls — observe and screenshot only.
+- A **staging/real** mode (if the product defines one) defaults the rails to
+  **read-mostly** (never tap Confirm / Send / Approve / Submit / Delete-style
+  controls) unless the product rails explicitly allow writes there (e.g. a
+  staging env with no real money and dedicated test accounts).
 
 ## Two loop drivers (pick at invocation time)
 - **wake** (`/app-pilot <mission> wake …`, the default) — `ScheduleWakeup`-driven,
@@ -164,8 +165,8 @@ on the first iteration — don't guess labels.
 - **Money/destructive flows:** follow the product rails in `product/RUNBOOK.md`.
   Universal minimum: EVERY tap on a Confirm / Send / Approve / Submit-style
   button must be preceded by `app-pilot shot` and logged via `app-pilot act CONFIRM <what>`
-  so the human can audit the run afterwards. In a staging/real mode these taps
-  are FORBIDDEN.
+  so the human can audit the run afterwards. In a staging/real mode tap them
+  only where the product rails allow writes (read-mostly is the default).
 - **Recovery hierarchy — prefer in-app navigation; `app-pilot reload` is the LAST resort.**
   1. **Stuck on a bottom sheet?** → tap its own labelled Close/Cancel button if
      it has one; else the product's tester-escape label (see `product/RUNBOOK.md`

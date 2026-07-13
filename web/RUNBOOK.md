@@ -24,9 +24,11 @@ Defined per product in `product/RUNBOOK.md`. The universal pattern:
   answer (`app-pilot health` checks; if DOWN, STOP — health prints the start command).
 - A **deterministic frontend** mode (MSW or similar), if the product defines
   one: UI/flow/design checks only; ground-truth invariants don't apply.
-- A **staging/real** mode, if defined: the tester cannot log in itself (OAuth);
-  a human signs in once in the MCP browser session. Rails flip to
-  **read-mostly**: never click Send / Confirm / Approve / Submit / Delete.
+- A **staging/real** mode, if defined: real auth — a human signs in once in the
+  MCP browser session, unless the product documents an unattended login path.
+  Rails default to **read-mostly** (never click Send / Confirm / Approve /
+  Submit / Delete) unless the product rails explicitly allow writes there
+  (e.g. a staging env with no real money and dedicated test accounts).
 
 ## Eyes and hands — the Playwright MCP
 - `browser_navigate(url)` — go to `app-pilot target --url` + path
@@ -130,9 +132,10 @@ from the closest available state, and note the gap).
   500 in the network log is a finding, not a pass.
 - **Navigate via the ARIA snapshot** (roles/names), not coordinates. An
   element you can't address by role/name is itself an accessibility finding.
-- **Money/destructive-flow audit (local mode):** before EVERY click on a
+- **Money/destructive-flow audit:** before EVERY click on a
   Confirm/Send/Approve/Submit-style control: `app-pilot shot` + `app-pilot act CONFIRM <what>`.
-  In staging those clicks are FORBIDDEN. Product rails: `product/RUNBOOK.md`.
+  In a staging/real mode click them only where the product rails allow writes
+  (read-mostly is the default). Product rails: `product/RUNBOOK.md`.
 - **Ground-truth sweep before Finish (local mode, if the product has one):**
   `app-pilot check` (registry: `product/INVARIANTS.md`). Bracket risky actions with
   `app-pilot snapshot` / `app-pilot diff --expect-new N` (double-submit probe).
@@ -172,7 +175,8 @@ Figma variables) — see FIGMA_MAP.
 
 ## Limits
 - The wake loop is session-scoped (terminal open, Mac awake).
-- Deterministic-frontend mode: no backend behavior under test; staging: read-only.
+- Deterministic-frontend mode: no backend behavior under test; staging: rails
+  per the product RUNBOOK (read-mostly default).
 - A fresh `app-pilot shot` context sees mock-auth states only — staging screenshots
   must come from the MCP's logged-in session.
 
