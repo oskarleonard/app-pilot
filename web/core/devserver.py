@@ -15,6 +15,7 @@ Subcommands:
 import argparse
 import os
 import signal
+import ssl
 import subprocess
 import sys
 import time
@@ -65,7 +66,11 @@ def kill_port():
 
 def server_ok():
     try:
-        with urllib.request.urlopen(target.APP_URL, timeout=5) as r:
+        # A TLS tester mode (e.g. `next dev --experimental-https`) serves a
+        # self-signed localhost cert — verification would false-DOWN it; the
+        # ping is loopback-only, so skipping verification is safe.
+        ctx = ssl._create_unverified_context() if target.APP_URL.startswith("https://localhost") else None
+        with urllib.request.urlopen(target.APP_URL, timeout=5, context=ctx) as r:
             return r.status == 200
     except Exception:
         return False

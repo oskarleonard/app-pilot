@@ -105,6 +105,39 @@ def apply_local(ns, near, filename="target.local.py"):
     exec(compile(src, path, "exec"), ns)
 
 
+def load_env_profile(*paths, required=()):
+    """First existing file among `paths`, parsed as KEY=VAL lines -> (dict, path).
+
+    dotenv-lite: blank lines and #-comments skipped, split on the first '=',
+    values verbatim (no quote/escape handling — profiles are trusted local
+    files). Projects use this for gitignored env profiles (which backend/auth
+    instance a real-API tester mode talks to), passing the in-checkout path
+    FIRST and an absolute live-checkout path as the fallback: gitignored files
+    are not materialized in detached worktrees (hugin-style PR fires), but the
+    live checkout's copy still resolves. Exits actionably when no path exists
+    or a `required` key is missing/empty — a half-loaded profile must not boot
+    a tester against the wrong backend."""
+    tried = []
+    for p in paths:
+        p = os.path.abspath(os.path.expanduser(p))
+        tried.append(p)
+        if not os.path.isfile(p):
+            continue
+        env = {}
+        with open(p) as fh:
+            for line in fh:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                env[k.strip()] = v.strip()
+        missing = [k for k in required if not env.get(k)]
+        if missing:
+            sys.exit(f"app-pilot: profile {p} is missing {', '.join(missing)} — fill it in first")
+        return env, p
+    sys.exit("app-pilot: no env profile found — tried:\n  " + "\n  ".join(tried))
+
+
 def ensure_product_mount(near, env_var="APP_PILOT_PRODUCT_DIR"):
     """Optional central product layer. A one-line `product.pin` next to
     target.py (path to a shared checkout's product dir — relative to the
@@ -176,6 +209,7 @@ def cli(ns):
         ("--port", "PORT"),
         ("--port", "TESTER_PORT"),
         ("--url", "APP_URL"),
+        ("--origin", "PUBLIC_ORIGIN"),
         ("--window", "WINDOW"),
         ("--bundle", "BUNDLE"),
         ("--mode", "MODE"),
