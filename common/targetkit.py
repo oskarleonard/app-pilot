@@ -111,12 +111,12 @@ def load_env_profile(*paths, required=()):
     dotenv-lite: blank lines and #-comments skipped, split on the first '=',
     values verbatim (no quote/escape handling — profiles are trusted local
     files). Projects use this for gitignored env profiles (which backend/auth
-    instance a real-API tester mode talks to), passing the in-checkout path
-    FIRST and an absolute live-checkout path as the fallback: gitignored files
-    are not materialized in detached worktrees (hugin-style PR fires), but the
-    live checkout's copy still resolves. Exits actionably when no path exists
-    or a `required` key is missing/empty — a half-loaded profile must not boot
-    a tester against the wrong backend."""
+    instance a real-API tester mode talks to). Callers may pass fallback
+    paths; note that gitignored files are not materialized in detached
+    worktrees — the automation that creates such a checkout should inject the
+    profile before boot. Exits actionably when no path exists or a `required`
+    key is missing/empty — a half-loaded profile must not boot a tester
+    against the wrong backend."""
     tried = []
     for p in paths:
         p = os.path.abspath(os.path.expanduser(p))
