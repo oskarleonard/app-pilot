@@ -95,7 +95,17 @@ def apply_local(ns, near, filename="target.local.py"):
     developer's file). Team config never goes here — anything every developer
     needs belongs in target.py. (The sim UDID keeps its own auto-written pin,
     `target.local` — see resolve_udid; gitignore both with `target.local*`.)
+
+    Also refreshes the product/ mount: every engine command imports target.py
+    (which calls this), while ensure_product_mount's other caller — cli() —
+    only covers `target --field`. Without this, a fresh checkout/worktree had
+    NO product layer during stop/serve/health/init until something ran
+    --field (hit live on the first mobile pilot fire, 2026-07-14).
     """
+    try:
+        ensure_product_mount(near)
+    except OSError as err:
+        sys.stderr.write(f"app-pilot: product mount skipped: {err}\n")
     path = os.path.join(os.path.dirname(os.path.abspath(near)), filename)
     try:
         with open(path) as fh:
@@ -149,8 +159,9 @@ def ensure_product_mount(near, env_var="APP_PILOT_PRODUCT_DIR"):
     the committed fallback for machines without the shared checkout. No pin
     file = no-op, so plain local-product projects never notice this.
 
-    Rides every CLI touch (serve/health/--field), so the mount is fresh
-    before the agent reads product/ paths directly.
+    Rides every target.py import (via apply_local) plus the --field CLI, so
+    the mount is fresh before ANY engine command reads product/ paths —
+    stop/serve/health/init import target as a module and never reach cli().
     """
     adapter = os.path.dirname(os.path.abspath(near))
     mount = os.path.join(adapter, "product")
