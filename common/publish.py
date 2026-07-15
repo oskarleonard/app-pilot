@@ -36,6 +36,7 @@ Usage:
   app-pilot publish <image> --feature <slug> [--name <file>] [--caption <text>] [--width N]
 """
 import argparse
+import html
 import os
 import re
 import subprocess
@@ -121,7 +122,11 @@ def emit_snippet(url, caption, width):
     print("\n--- paste into the PR body ---")
     if caption:
         print(f"**{caption}**")
-    print(f'<img src="{url}" width="{width}" alt="{caption or "QA before/after"}" />')
+    # Attribute-escape the alt: a caption containing a double quote would
+    # terminate the attribute early and GitHub then renders the whole tag as
+    # literal text (seen live: a finding title quoting an API error message).
+    alt = html.escape(caption or "QA before/after", quote=True)
+    print(f'<img src="{url}" width="{width}" alt="{alt}" />')
 
 
 def main():
