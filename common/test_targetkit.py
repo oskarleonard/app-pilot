@@ -221,6 +221,44 @@ class TesterPort(unittest.TestCase):
                 targetkit.tester_port(3002)
 
 
+class TesterPortBeatsOverlay(unittest.TestCase):
+    """The documented wiring: plain knob -> apply_local -> tester_port LAST.
+
+    Pins the precedence APP_PILOT_PORT > target.local.py > default, so the
+    fleet override outranks a per-developer pin (matching resolve_udid, where
+    env beats the target.local pin). Called at the knob site instead, the
+    overlay silently won and pooled lanes collided on one port."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="targetkit-order-test-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.near = os.path.join(self.root, "target.py")
+        open(self.near, "w").write("# rig\n")
+        os.environ.pop("APP_PILOT_PORT", None)
+        self.addCleanup(os.environ.pop, "APP_PILOT_PORT", None)
+
+    def _overlay(self, src):
+        open(os.path.join(self.root, "target.local.py"), "w").write(src)
+
+    def _resolve(self):
+        """Mimic target.example.py's wiring exactly."""
+        ns = {"__file__": self.near, "TESTER_PORT": 3002}
+        targetkit.apply_local(ns, self.near)
+        return targetkit.tester_port(ns["TESTER_PORT"])
+
+    def test_fleet_env_beats_developer_overlay(self):
+        os.environ["APP_PILOT_PORT"] = "3207"
+        self._overlay("TESTER_PORT = 3103\n")
+        self.assertEqual(self._resolve(), 3207)
+
+    def test_overlay_still_wins_without_fleet_env(self):
+        self._overlay("TESTER_PORT = 3103\n")
+        self.assertEqual(self._resolve(), 3103)
+
+    def test_plain_default_when_neither(self):
+        self.assertEqual(self._resolve(), 3002)
+
+
 class ResolveUdidPrecedence(unittest.TestCase):
     """resolve_udid — rig env > APP_PILOT_UDID (uniform) > target.local pin.
 

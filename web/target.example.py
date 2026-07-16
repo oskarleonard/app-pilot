@@ -11,7 +11,7 @@ from _harness import targetkit
 
 # ───────────── CONFIG — everything in this section is yours to edit ─────────────
 
-TESTER_PORT = targetkit.tester_port(3002)  # never your dev port; pooled runs override via APP_PILOT_PORT
+TESTER_PORT = 3002  # never your dev port (e.g. web dev 3000, storybook 6006)
 
 # Ground truth (omit or None = no backend; health skips the ping).
 BACKEND_URL = "http://localhost:8080"
@@ -49,6 +49,9 @@ targetkit.apply_local(globals(), __file__)
 
 # ── derived + mode-computed — don't edit below this line ───────────────────
 
+# Fleet override LAST: a pooled/lane runner's APP_PILOT_PORT outranks the
+# overlay above, matching resolve_udid (env beats the target.local pin).
+TESTER_PORT = targetkit.tester_port(TESTER_PORT)
 APP_URL = f"http://localhost:{TESTER_PORT}"
 
 # Tester mode + the env the tester's dev server runs with, per mode.

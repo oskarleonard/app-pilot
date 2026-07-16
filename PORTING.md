@@ -29,9 +29,12 @@ Mobile:
   Orchestrators aim any rig at a specific sim via the uniform
   `APP_PILOT_UDID`; the rig's own `UDID_ENV` wins over it (deliberate narrow
   override beats fleet plumbing).
-- `PORT` — distinct from the app's dev Metro AND every other tester; use
-  `targetkit.tester_port(<default>)` so pooled/lane runs override it
-  uniformly via `APP_PILOT_PORT`.
+- `PORT` — distinct from the app's dev Metro AND every other tester. Keep the
+  knob a plain number and re-apply the fleet override **after**
+  `apply_local`, so a pooled/lane run's `APP_PILOT_PORT` outranks a
+  per-developer `target.local.py` pin (env beats file, matching `UDID`):
+  `PORT = targetkit.tester_port(PORT)`, above the derived block. Call it at
+  the knob site instead and the overlay silently wins, colliding the lanes.
 - `BUNDLE` + `SCHEME` — from `app.config.ts` (dev-flavor bundle id; URL scheme
   for dev-client deep links).
 - `TAB_ORDER` — read the live a11y tree (`app-pilot tree`), don't guess.
@@ -55,7 +58,12 @@ Mobile:
   (no `APP_LABELS`) whose UI shows an exact "Safari" label now reads `springboard`
   (a false FAIL — re-check; safer than a false PASS).
 - `LOG_PROCESS_HINT` — substring of the app's process name (crash-log predicate).
-- `/tmp/<project>-tester-*` artifact paths — **namespace per project**.
+- `/tmp/<project>-tester-*` artifact paths — **namespace per project**. Note
+  `APP_PILOT_PORT`/`APP_PILOT_UDID` isolate only the port and the sim: these
+  paths stay one set per rig, so two lanes of the SAME rig still clobber each
+  other's `PIDFILE`/`METRO_LOG`/`CRASHLOG*` (one lane's `stop` reads the
+  other's pid; `crashlog.start(fresh=True)` replaces its capture). Namespace
+  them per worker too before running same-rig lanes concurrently.
 - `MODE`/`METRO_ENV` — the app's own mock/dev flags. Gotcha: Expo's dev
   transform spreads `.env*` files OVER inline env — flag vars must have NO
   `.env*` entry to propagate.
@@ -63,9 +71,11 @@ Mobile:
   `BACKEND_HINT` (the fix command printed when it's down).
 
 Web:
-- `TESTER_PORT` — never your dev port; `APP_URL`. Use
-  `targetkit.tester_port(<default>)` — pooled/isolated runs override via
-  `APP_PILOT_PORT`, a plain run keeps the pin.
+- `TESTER_PORT` — never your dev port; `APP_URL`. Same rule as mobile's
+  `PORT`: plain number at the knob, then `TESTER_PORT =
+  targetkit.tester_port(TESTER_PORT)` **after** `apply_local` and before
+  `APP_URL` — pooled/isolated runs override via `APP_PILOT_PORT`, a plain run
+  keeps the pin.
 - `MODE`/`MODE_ENV` — the app's msw/mock-auth envs per mode.
 - `SERVER_CMD` (argv, default `["bun", "run", "dev"]`; `PORT` env is set for
   you) + `SERVER_CWD` (monorepo subdir, default repo root).

@@ -28,11 +28,25 @@ def tester_port(default, env_var="APP_PILOT_PORT"):
     """The tester's port: orchestrator env override -> the rig's pinned default.
 
     Pooled/isolated runs (worktree workers, dashboard fire lanes) export
-    APP_PILOT_PORT so N copies of the same rig coexist; a plain developer run
-    keeps the pinned default. Call it AT the knob site so every derived value
-    (APP_URL, SERVER_CMD) flows from the override:
+    APP_PILOT_PORT so N copies of the same rig stop fighting over the port; a
+    plain developer run keeps the pinned default. (Port + UDID are all this
+    isolates — the rig's own /tmp artifacts (PIDFILE, METRO_LOG, CRASHLOG*)
+    are still one set per rig, so same-rig lanes clobber each other's pidfile
+    and crash capture. Namespace those per worker before running lanes of ONE
+    rig concurrently.)
 
-        TESTER_PORT = targetkit.tester_port(3002)
+    Call it AFTER apply_local and BEFORE anything derived: the fleet override
+    must outrank the per-developer overlay (matching resolve_udid, where env
+    beats the target.local pin), and every derived value (APP_URL, SERVER_CMD)
+    must flow from the result:
+
+        TESTER_PORT = 3002
+        targetkit.apply_local(globals(), __file__)
+        TESTER_PORT = targetkit.tester_port(TESTER_PORT)
+        APP_URL = f"http://localhost:{TESTER_PORT}"
+
+    Called at the knob site instead, a gitignored target.local.py pinning
+    TESTER_PORT would silently beat the orchestrator and collide the lanes.
     """
     raw = os.environ.get(env_var, "").strip()
     if not raw:
@@ -82,9 +96,19 @@ def resolve_udid(device_name, env_var, near, uniform_env="APP_PILOT_UDID"):
     can aim any rig at a specific sim without knowing that rig's private
     env-var name. The rig-specific env_var stays higher-precedence — it is a
     deliberate narrow override (a developer debugging ONE rig), while the
-    uniform name is fleet plumbing."""
-    for var in (env_var, uniform_env):
-        val = os.environ.get(var, "").strip()
+    uniform name is fleet plumbing. That only reads as deliberate when the rig
+    var is set FOR the run, so a conflict says so on stderr: inherited
+    ambiently (a shell profile, a stale worker env) it would otherwise defeat
+    fleet aim silently, and the orchestrator can't clear a name it doesn't
+    know."""
+    rig = os.environ.get(env_var, "").strip()
+    uniform = os.environ.get(uniform_env, "").strip()
+    if rig and uniform and rig != uniform:
+        sys.stderr.write(
+            f"app-pilot: {env_var}={rig} beats {uniform_env}={uniform} "
+            f"(rig-specific env wins); unset it for fleet aim to apply.\n"
+        )
+    for val in (rig, uniform):
         if val:
             return val
     pin_path = os.path.join(os.path.dirname(os.path.abspath(near)), "target.local")
@@ -114,8 +138,9 @@ def apply_local(ns, near, filename="target.local.py"):
 
     target.py calls this AFTER its plain knobs and BEFORE anything derived:
 
-        TESTER_PORT = targetkit.tester_port(3002)
+        TESTER_PORT = 3002
         targetkit.apply_local(globals(), __file__)
+        TESTER_PORT = targetkit.tester_port(TESTER_PORT)  # fleet env > overlay
         APP_URL = f"http://localhost:{TESTER_PORT}"   # computed AFTER overrides
 
     The file (default `target.local.py`, next to target.py, gitignored) is
