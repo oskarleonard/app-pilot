@@ -20,9 +20,17 @@ per-app values, and the empirical platform gotchas.
 ## Per-app values (target.py)
 
 Mobile:
-- `DEVICE_NAME` — a sim model **no other project's tester uses** on this
-  machine (parallel testers coexist by sim + port).
-- `PORT` — distinct from the app's dev Metro AND every other tester.
+- `DEVICE_NAME` — the sim model to auto-discover on first run; **the durable
+  pin is the UDID in `target.local`** (model names duplicate across iOS
+  runtimes and rot when sims are recreated — never treat the name as the
+  key). Orchestrators aim any rig at a specific sim via the uniform
+  `APP_PILOT_UDID`; the rig's own `UDID_ENV` wins over it (deliberate narrow
+  override beats fleet plumbing).
+- `PORT` — distinct from the app's dev Metro AND every other tester; use
+  `targetkit.tester_port(<default>)` so pooled/lane runs override it
+  uniformly via `APP_PILOT_PORT`. On a machine shared by multiple agent
+  systems, allocate the number from a machine-level map (e.g. a
+  `machine.json` both systems read at build time) instead of by convention.
 - `BUNDLE` + `SCHEME` — from `app.config.ts` (dev-flavor bundle id; URL scheme
   for dev-client deep links).
 - `TAB_ORDER` — read the live a11y tree (`app-pilot tree`), don't guess.
@@ -54,7 +62,9 @@ Mobile:
   `BACKEND_HINT` (the fix command printed when it's down).
 
 Web:
-- `TESTER_PORT` — never your dev port; `APP_URL`.
+- `TESTER_PORT` — never your dev port; `APP_URL`. Use
+  `targetkit.tester_port(<default>)` — pooled/isolated runs override via
+  `APP_PILOT_PORT`, a plain run keeps the pin.
 - `MODE`/`MODE_ENV` — the app's msw/mock-auth envs per mode.
 - `SERVER_CMD` (argv, default `["bun", "run", "dev"]`; `PORT` env is set for
   you) + `SERVER_CWD` (monorepo subdir, default repo root).

@@ -11,7 +11,7 @@ from _harness import targetkit
 
 # ───────────── CONFIG — everything in this section is yours to edit ─────────────
 
-TESTER_PORT = 3002  # never your dev port (e.g. web dev 3000, storybook 6006)
+TESTER_PORT = targetkit.tester_port(3002)  # never your dev port; pooled runs override via APP_PILOT_PORT
 
 # Ground truth (omit or None = no backend; health skips the ping).
 BACKEND_URL = "http://localhost:8080"

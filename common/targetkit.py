@@ -24,6 +24,25 @@ def mode_from_env(env_var, default, allowed=None):
     return mode
 
 
+def tester_port(default, env_var="APP_PILOT_PORT"):
+    """The tester's port: orchestrator env override -> the rig's pinned default.
+
+    Pooled/isolated runs (worktree workers, dashboard fire lanes) export
+    APP_PILOT_PORT so N copies of the same rig coexist; a plain developer run
+    keeps the pinned default. Call it AT the knob site so every derived value
+    (APP_URL, SERVER_CMD) flows from the override:
+
+        TESTER_PORT = targetkit.tester_port(3002)
+    """
+    raw = os.environ.get(env_var)
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        sys.exit(f"app-pilot: {env_var}={raw!r} is not a port number")
+
+
 def _runtime_version(runtime_key):
     m = re.search(r"iOS-(\d+)-(\d+)", runtime_key)
     return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
@@ -51,13 +70,20 @@ def _discover_udid(device_name):
     return candidates[0][2]
 
 
-def resolve_udid(device_name, env_var, near):
-    """The per-machine sim pin: env override -> target.local next to `near`
-    (written on first resolve, so discovery runs at most once per machine)
-    -> auto-discover a sim named device_name."""
-    env = os.environ.get(env_var)
-    if env:
-        return env
+def resolve_udid(device_name, env_var, near, uniform_env="APP_PILOT_UDID"):
+    """The per-machine sim pin: rig env override -> APP_PILOT_UDID -> target.local
+    next to `near` (written on first resolve, so discovery runs at most once per
+    machine) -> auto-discover a sim named device_name.
+
+    APP_PILOT_UDID is the UNIFORM orchestrator override: a pooled/lane runner
+    can aim any rig at a specific sim without knowing that rig's private
+    env-var name. The rig-specific env_var stays higher-precedence — it is a
+    deliberate narrow override (a developer debugging ONE rig), while the
+    uniform name is fleet plumbing."""
+    for var in (env_var, uniform_env):
+        val = os.environ.get(var)
+        if val:
+            return val
     pin_path = os.path.join(os.path.dirname(os.path.abspath(near)), "target.local")
     try:
         pin = open(pin_path).read().strip()

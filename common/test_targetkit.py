@@ -189,5 +189,71 @@ class ApplyLocal(unittest.TestCase):
         self.assertIn("target.local.py", ctx.exception.filename or "")
 
 
+class TesterPort(unittest.TestCase):
+    """tester_port — the uniform APP_PILOT_PORT override at the knob site."""
+
+    def setUp(self):
+        os.environ.pop("APP_PILOT_PORT", None)
+        self.addCleanup(os.environ.pop, "APP_PILOT_PORT", None)
+
+    def test_default_without_env(self):
+        self.assertEqual(targetkit.tester_port(3002), 3002)
+
+    def test_env_override_wins(self):
+        os.environ["APP_PILOT_PORT"] = "3207"
+        self.assertEqual(targetkit.tester_port(3002), 3207)
+
+    def test_blank_env_keeps_default(self):
+        os.environ["APP_PILOT_PORT"] = "  "
+        self.assertEqual(targetkit.tester_port(3002), 3002)
+
+    def test_junk_env_exits_loudly(self):
+        os.environ["APP_PILOT_PORT"] = "not-a-port"
+        with self.assertRaises(SystemExit):
+            targetkit.tester_port(3002)
+
+
+class ResolveUdidPrecedence(unittest.TestCase):
+    """resolve_udid — rig env > APP_PILOT_UDID (uniform) > target.local pin.
+
+    Discovery never runs here: every case satisfies an earlier rung, so the
+    tests stay hermetic (no simctl)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="targetkit-udid-test-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.near = os.path.join(self.root, "target.py")
+        open(self.near, "w").write("# pin\n")
+        for var in ("X_QA_UDID", "APP_PILOT_UDID"):
+            os.environ.pop(var, None)
+            self.addCleanup(os.environ.pop, var, None)
+
+    def _pin(self, udid):
+        open(os.path.join(self.root, "target.local"), "w").write(udid + "\n")
+
+    def test_rig_env_beats_uniform_env(self):
+        os.environ["X_QA_UDID"] = "RIG-UDID"
+        os.environ["APP_PILOT_UDID"] = "UNIFORM-UDID"
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "RIG-UDID",
+        )
+
+    def test_uniform_env_beats_pin_file(self):
+        os.environ["APP_PILOT_UDID"] = "UNIFORM-UDID"
+        self._pin("PINNED-UDID")
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "UNIFORM-UDID",
+        )
+
+    def test_pin_file_when_no_env(self):
+        self._pin("PINNED-UDID")
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "PINNED-UDID",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
