@@ -14,7 +14,7 @@ from _harness import targetkit
 
 # ───────────── CONFIG — everything in this section is yours to edit ─────────────
 
-DEVICE_NAME = "iPhone 16 Pro"  # model to auto-discover; the durable pin is the UDID in target.local
+DEVICE_NAME = "iPhone 16 Pro"  # a model no other tester uses; durable pin = the UDID in target.local
 PORT = targetkit.tester_port(8092)  # never your dev Metro (8081); pooled runs override via APP_PILOT_PORT
 BUNDLE = "com.example.myapp.dev"  # dev-flavor bundle id (app.config.ts)
 SCHEME = "myapp"  # app.config.ts `scheme` — dev-client deep links

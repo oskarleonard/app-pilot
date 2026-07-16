@@ -20,10 +20,13 @@ per-app values, and the empirical platform gotchas.
 ## Per-app values (target.py)
 
 Mobile:
-- `DEVICE_NAME` — the sim model to auto-discover on first run; **the durable
-  pin is the UDID in `target.local`** (model names duplicate across iOS
-  runtimes and rot when sims are recreated — never treat the name as the
-  key). Orchestrators aim any rig at a specific sim via the uniform
+- `DEVICE_NAME` — the sim model to auto-discover on first run; pick one **no
+  other project's tester uses** on this machine (discovery keys on the model
+  name and is deterministic, so two projects sharing one auto-pin the SAME
+  sim and both testers drive it). **The durable pin is the UDID in
+  `target.local`** (model names duplicate across iOS runtimes and rot when
+  sims are recreated — never treat the name as the long-term key).
+  Orchestrators aim any rig at a specific sim via the uniform
   `APP_PILOT_UDID`; the rig's own `UDID_ENV` wins over it (deliberate narrow
   override beats fleet plumbing).
 - `PORT` — distinct from the app's dev Metro AND every other tester; use

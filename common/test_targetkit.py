@@ -212,6 +212,14 @@ class TesterPort(unittest.TestCase):
         with self.assertRaises(SystemExit):
             targetkit.tester_port(3002)
 
+    def test_out_of_range_env_exits_loudly(self):
+        # int()-parseable but unusable: 0 makes lsof/APP_URL match nothing, so
+        # stop/kill_port silently no-op. The parse guard must reject these too.
+        for raw in ("0", "-1", "65536", "99999"):
+            os.environ["APP_PILOT_PORT"] = raw
+            with self.assertRaises(SystemExit, msg=f"{raw} should exit"):
+                targetkit.tester_port(3002)
+
 
 class ResolveUdidPrecedence(unittest.TestCase):
     """resolve_udid — rig env > APP_PILOT_UDID (uniform) > target.local pin.

@@ -38,9 +38,12 @@ def tester_port(default, env_var="APP_PILOT_PORT"):
     if not raw:
         return default
     try:
-        return int(raw)
+        port = int(raw)
     except ValueError:
         sys.exit(f"app-pilot: {env_var}={raw!r} is not a port number")
+    if not 1 <= port <= 65535:
+        sys.exit(f"app-pilot: {env_var}={raw!r} is out of range (1-65535)")
+    return port
 
 
 def _runtime_version(runtime_key):
@@ -96,7 +99,8 @@ def resolve_udid(device_name, env_var, near, uniform_env="APP_PILOT_UDID"):
         sys.exit(
             f"app-pilot: no simulator named {device_name!r} found.\n"
             f"Create one (Xcode > Devices & Simulators), or pin one explicitly:\n"
-            f"  echo <UDID> > {pin_path}   (or export {env_var}=<UDID>)"
+            f"  echo <UDID> > {pin_path}\n"
+            f"  (or export {env_var}=<UDID>, or the uniform {uniform_env}=<UDID>)"
         )
     try:
         open(pin_path, "w").write(udid + "\n")
