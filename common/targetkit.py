@@ -24,6 +24,42 @@ def mode_from_env(env_var, default, allowed=None):
     return mode
 
 
+def tester_port(default, env_var="APP_PILOT_PORT"):
+    """The tester's port: orchestrator env override -> the rig's pinned default.
+
+    Pooled/isolated runs (worktree workers, dashboard fire lanes) export
+    APP_PILOT_PORT so N copies of the same rig stop fighting over the port; a
+    plain developer run keeps the pinned default. (Port + UDID are all this
+    isolates — the rig's own /tmp artifacts (PIDFILE, METRO_LOG, CRASHLOG*)
+    are still one set per rig, so same-rig lanes clobber each other's pidfile
+    and crash capture. Namespace those per worker before running lanes of ONE
+    rig concurrently.)
+
+    Call it AFTER apply_local and BEFORE anything derived: the fleet override
+    must outrank the per-developer overlay (matching resolve_udid, where env
+    beats the target.local pin), and every derived value (APP_URL, SERVER_CMD)
+    must flow from the result:
+
+        TESTER_PORT = 3002
+        targetkit.apply_local(globals(), __file__)
+        TESTER_PORT = targetkit.tester_port(TESTER_PORT)
+        APP_URL = f"http://localhost:{TESTER_PORT}"
+
+    Called at the knob site instead, a gitignored target.local.py pinning
+    TESTER_PORT would silently beat the orchestrator and collide the lanes.
+    """
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
+        return default
+    try:
+        port = int(raw)
+    except ValueError:
+        sys.exit(f"app-pilot: {env_var}={raw!r} is not a port number")
+    if not 1 <= port <= 65535:
+        sys.exit(f"app-pilot: {env_var}={raw!r} is out of range (1-65535)")
+    return port
+
+
 def _runtime_version(runtime_key):
     m = re.search(r"iOS-(\d+)-(\d+)", runtime_key)
     return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
@@ -51,13 +87,30 @@ def _discover_udid(device_name):
     return candidates[0][2]
 
 
-def resolve_udid(device_name, env_var, near):
-    """The per-machine sim pin: env override -> target.local next to `near`
-    (written on first resolve, so discovery runs at most once per machine)
-    -> auto-discover a sim named device_name."""
-    env = os.environ.get(env_var)
-    if env:
-        return env
+def resolve_udid(device_name, env_var, near, uniform_env="APP_PILOT_UDID"):
+    """The per-machine sim pin: rig env override -> APP_PILOT_UDID -> target.local
+    next to `near` (written on first resolve, so discovery runs at most once per
+    machine) -> auto-discover a sim named device_name.
+
+    APP_PILOT_UDID is the UNIFORM orchestrator override: a pooled/lane runner
+    can aim any rig at a specific sim without knowing that rig's private
+    env-var name. The rig-specific env_var stays higher-precedence — it is a
+    deliberate narrow override (a developer debugging ONE rig), while the
+    uniform name is fleet plumbing. That only reads as deliberate when the rig
+    var is set FOR the run, so a conflict says so on stderr: inherited
+    ambiently (a shell profile, a stale worker env) it would otherwise defeat
+    fleet aim silently, and the orchestrator can't clear a name it doesn't
+    know."""
+    rig = os.environ.get(env_var, "").strip()
+    uniform = os.environ.get(uniform_env, "").strip()
+    if rig and uniform and rig != uniform:
+        sys.stderr.write(
+            f"app-pilot: {env_var}={rig} beats {uniform_env}={uniform} "
+            f"(rig-specific env wins); unset it for fleet aim to apply.\n"
+        )
+    for val in (rig, uniform):
+        if val:
+            return val
     pin_path = os.path.join(os.path.dirname(os.path.abspath(near)), "target.local")
     try:
         pin = open(pin_path).read().strip()
@@ -70,7 +123,8 @@ def resolve_udid(device_name, env_var, near):
         sys.exit(
             f"app-pilot: no simulator named {device_name!r} found.\n"
             f"Create one (Xcode > Devices & Simulators), or pin one explicitly:\n"
-            f"  echo <UDID> > {pin_path}   (or export {env_var}=<UDID>)"
+            f"  echo <UDID> > {pin_path}\n"
+            f"  (or export {env_var}=<UDID>, or the uniform {uniform_env}=<UDID>)"
         )
     try:
         open(pin_path, "w").write(udid + "\n")
@@ -86,6 +140,7 @@ def apply_local(ns, near, filename="target.local.py"):
 
         TESTER_PORT = 3002
         targetkit.apply_local(globals(), __file__)
+        TESTER_PORT = targetkit.tester_port(TESTER_PORT)  # fleet env > overlay
         APP_URL = f"http://localhost:{TESTER_PORT}"   # computed AFTER overrides
 
     The file (default `target.local.py`, next to target.py, gitignored) is

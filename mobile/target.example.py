@@ -14,8 +14,8 @@ from _harness import targetkit
 
 # ───────────── CONFIG — everything in this section is yours to edit ─────────────
 
-DEVICE_NAME = "iPhone 16 Pro"  # a sim model NO other project's tester uses on this machine
-PORT = 8092  # tester Metro port — distinct from your dev Metro (8081) + every other tester
+DEVICE_NAME = "iPhone 16 Pro"  # a model no other tester uses; durable pin = the UDID in target.local
+PORT = 8092  # tester Metro port — never your dev Metro (8081) or another tester's
 BUNDLE = "com.example.myapp.dev"  # dev-flavor bundle id (app.config.ts)
 SCHEME = "myapp"  # app.config.ts `scheme` — dev-client deep links
 UDID_ENV = "MYAPP_PILOT_UDID"  # env override for the per-machine sim pin (target.local)
@@ -103,6 +103,10 @@ REVIEW = {
 targetkit.apply_local(globals(), __file__)
 
 # ── derived — don't edit below this line ───────────────────────────────────
+
+# Fleet override LAST: a pooled/lane runner's APP_PILOT_PORT outranks the
+# overlay above, matching resolve_udid (env beats the target.local pin).
+PORT = targetkit.tester_port(PORT)
 WINDOW = f'window "{DEVICE_NAME}"'  # legacy osascript reference only
 
 # ───────────────────── machinery — don't edit below this line ─────────────────────

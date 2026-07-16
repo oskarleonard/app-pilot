@@ -189,5 +189,127 @@ class ApplyLocal(unittest.TestCase):
         self.assertIn("target.local.py", ctx.exception.filename or "")
 
 
+class TesterPort(unittest.TestCase):
+    """tester_port — the uniform APP_PILOT_PORT override at the knob site."""
+
+    def setUp(self):
+        os.environ.pop("APP_PILOT_PORT", None)
+        self.addCleanup(os.environ.pop, "APP_PILOT_PORT", None)
+
+    def test_default_without_env(self):
+        self.assertEqual(targetkit.tester_port(3002), 3002)
+
+    def test_env_override_wins(self):
+        os.environ["APP_PILOT_PORT"] = "3207"
+        self.assertEqual(targetkit.tester_port(3002), 3207)
+
+    def test_blank_env_keeps_default(self):
+        os.environ["APP_PILOT_PORT"] = "  "
+        self.assertEqual(targetkit.tester_port(3002), 3002)
+
+    def test_junk_env_exits_loudly(self):
+        os.environ["APP_PILOT_PORT"] = "not-a-port"
+        with self.assertRaises(SystemExit):
+            targetkit.tester_port(3002)
+
+    def test_out_of_range_env_exits_loudly(self):
+        # int()-parseable but unusable: 0 makes lsof/APP_URL match nothing, so
+        # stop/kill_port silently no-op. The parse guard must reject these too.
+        for raw in ("0", "-1", "65536", "99999"):
+            os.environ["APP_PILOT_PORT"] = raw
+            with self.assertRaises(SystemExit, msg=f"{raw} should exit"):
+                targetkit.tester_port(3002)
+
+
+class TesterPortBeatsOverlay(unittest.TestCase):
+    """The documented wiring: plain knob -> apply_local -> tester_port LAST.
+
+    Pins the precedence APP_PILOT_PORT > target.local.py > default, so the
+    fleet override outranks a per-developer pin (matching resolve_udid, where
+    env beats the target.local pin). Called at the knob site instead, the
+    overlay silently won and pooled lanes collided on one port."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="targetkit-order-test-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.near = os.path.join(self.root, "target.py")
+        open(self.near, "w").write("# rig\n")
+        os.environ.pop("APP_PILOT_PORT", None)
+        self.addCleanup(os.environ.pop, "APP_PILOT_PORT", None)
+
+    def _overlay(self, src):
+        open(os.path.join(self.root, "target.local.py"), "w").write(src)
+
+    def _resolve(self):
+        """Mimic target.example.py's wiring exactly."""
+        ns = {"__file__": self.near, "TESTER_PORT": 3002}
+        targetkit.apply_local(ns, self.near)
+        return targetkit.tester_port(ns["TESTER_PORT"])
+
+    def test_fleet_env_beats_developer_overlay(self):
+        os.environ["APP_PILOT_PORT"] = "3207"
+        self._overlay("TESTER_PORT = 3103\n")
+        self.assertEqual(self._resolve(), 3207)
+
+    def test_overlay_still_wins_without_fleet_env(self):
+        self._overlay("TESTER_PORT = 3103\n")
+        self.assertEqual(self._resolve(), 3103)
+
+    def test_plain_default_when_neither(self):
+        self.assertEqual(self._resolve(), 3002)
+
+
+class ResolveUdidPrecedence(unittest.TestCase):
+    """resolve_udid — rig env > APP_PILOT_UDID (uniform) > target.local pin.
+
+    Discovery never runs here: every case satisfies an earlier rung, so the
+    tests stay hermetic (no simctl)."""
+
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="targetkit-udid-test-")
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.near = os.path.join(self.root, "target.py")
+        open(self.near, "w").write("# pin\n")
+        for var in ("X_QA_UDID", "APP_PILOT_UDID"):
+            os.environ.pop(var, None)
+            self.addCleanup(os.environ.pop, var, None)
+
+    def _pin(self, udid):
+        open(os.path.join(self.root, "target.local"), "w").write(udid + "\n")
+
+    def test_rig_env_beats_uniform_env(self):
+        os.environ["X_QA_UDID"] = "RIG-UDID"
+        os.environ["APP_PILOT_UDID"] = "UNIFORM-UDID"
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "RIG-UDID",
+        )
+
+    def test_uniform_env_beats_pin_file(self):
+        os.environ["APP_PILOT_UDID"] = "UNIFORM-UDID"
+        self._pin("PINNED-UDID")
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "UNIFORM-UDID",
+        )
+
+    def test_pin_file_when_no_env(self):
+        self._pin("PINNED-UDID")
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "PINNED-UDID",
+        )
+
+    def test_blank_env_falls_through_to_pin(self):
+        # Same "blank = unset" rule as tester_port — an orchestrator emitting
+        # an empty APP_PILOT_UDID must not hand whitespace to simctl/idb.
+        os.environ["APP_PILOT_UDID"] = "   "
+        self._pin("PINNED-UDID")
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "PINNED-UDID",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
