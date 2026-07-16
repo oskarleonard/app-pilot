@@ -34,8 +34,8 @@ def tester_port(default, env_var="APP_PILOT_PORT"):
 
         TESTER_PORT = targetkit.tester_port(3002)
     """
-    raw = os.environ.get(env_var)
-    if raw is None or not raw.strip():
+    raw = os.environ.get(env_var, "").strip()
+    if not raw:
         return default
     try:
         return int(raw)
@@ -81,7 +81,7 @@ def resolve_udid(device_name, env_var, near, uniform_env="APP_PILOT_UDID"):
     deliberate narrow override (a developer debugging ONE rig), while the
     uniform name is fleet plumbing."""
     for var in (env_var, uniform_env):
-        val = os.environ.get(var)
+        val = os.environ.get(var, "").strip()
         if val:
             return val
     pin_path = os.path.join(os.path.dirname(os.path.abspath(near)), "target.local")
@@ -110,7 +110,7 @@ def apply_local(ns, near, filename="target.local.py"):
 
     target.py calls this AFTER its plain knobs and BEFORE anything derived:
 
-        TESTER_PORT = 3002
+        TESTER_PORT = targetkit.tester_port(3002)
         targetkit.apply_local(globals(), __file__)
         APP_URL = f"http://localhost:{TESTER_PORT}"   # computed AFTER overrides
 

@@ -254,6 +254,16 @@ class ResolveUdidPrecedence(unittest.TestCase):
             "PINNED-UDID",
         )
 
+    def test_blank_env_falls_through_to_pin(self):
+        # Same "blank = unset" rule as tester_port — an orchestrator emitting
+        # an empty APP_PILOT_UDID must not hand whitespace to simctl/idb.
+        os.environ["APP_PILOT_UDID"] = "   "
+        self._pin("PINNED-UDID")
+        self.assertEqual(
+            targetkit.resolve_udid("iPhone 16 Pro", "X_QA_UDID", self.near),
+            "PINNED-UDID",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -28,9 +28,7 @@ Mobile:
   override beats fleet plumbing).
 - `PORT` — distinct from the app's dev Metro AND every other tester; use
   `targetkit.tester_port(<default>)` so pooled/lane runs override it
-  uniformly via `APP_PILOT_PORT`. On a machine shared by multiple agent
-  systems, allocate the number from a machine-level map (e.g. a
-  `machine.json` both systems read at build time) instead of by convention.
+  uniformly via `APP_PILOT_PORT`.
 - `BUNDLE` + `SCHEME` — from `app.config.ts` (dev-flavor bundle id; URL scheme
   for dev-client deep links).
 - `TAB_ORDER` — read the live a11y tree (`app-pilot tree`), don't guess.
