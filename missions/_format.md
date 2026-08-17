@@ -48,6 +48,18 @@ steps), **Driver: wake / Driver: goal** (pacing specifics), **Watchdog**.
   apply high-confidence findings, re-verify + static checks, THEN open the
   PR (one gate pass, no looping). bug-hunt §4 is the reference wording —
   copy it into any new mission that commits code.
+- **Machine record — non-negotiable.** `app-pilot init` stamps a neutral
+  `runs/<id>/run.json` (schema in `common/runlog.py`) at run-dir creation
+  (`init --target <repo#N|ticket>` stamps what the run is against when the
+  mission has one), and every mission's finish steps MUST settle it:
+  `app-pilot close --status done|failed|abandoned --verdict pass|fail|mixed`
+  (`--findings <json>` optional) as the run's closing step — the close owns
+  run.json and its own audit lines; nothing else touches the run dir after it
+  (driver teardown — cancel pacemaker, report — may follow). The markdown stays
+  the human artifact; run.json is what dashboards and tools consume. A run
+  that dies unclosed can be settled by consumers from the dir's mtime — a run
+  that never opened is invisible, which is why the open lives in `init`, not
+  in mission prose.
 
 ## Current missions
 

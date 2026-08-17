@@ -142,6 +142,9 @@ STEP6 update the journal (Done / Remaining / Next).
   the **product PR convention** (`product/RUNBOOK.md`). The PR body carries the
   criteria→evidence table so a reviewer sees, per criterion, the live proof.
   ELSE leave the branch local and report its name + the blockers.
+- Settle the machine record: `app-pilot close --status done --verdict
+  <pass|fail|mixed>` (a build aborted midway closes `--status failed`). The
+  last action that touches the run dir — only driver teardown follows.
 - (wake) do NOT schedule again · (--driven) cancel the pacemaker · report and
   stop. Recommend a fresh non-author verifier as the next step.
 

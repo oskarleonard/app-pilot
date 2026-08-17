@@ -19,9 +19,13 @@ Subcommands (operate on the "current" run unless --run given):
   shot  <label> [path]           full-page screenshot of APP_URL+path (default /)
   note  <text...>                append a finding to findings.md
   act   <text...>                append a line to actions.log
+  close --status done|failed|abandoned [--verdict pass|fail|mixed] [--findings J]
+                                 settle run.json (machine record; the closing step —
+                                 it owns run.json and its own audit lines)
 """
 import argparse
 import datetime
+import json
 import os
 import re
 import subprocess
@@ -30,6 +34,25 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE))
 import target  # noqa: E402
+
+# The shared engine's common/runlog.py, loaded by explicit path — never via
+# sys.path, where a project-dir module named `runlog` (earlier in the path)
+# would silently shadow it.
+# Guarded: a broken/partial engine checkout must not take down shot/tap/note
+# — subcommands that never touch the machine record. close fails loud instead.
+import importlib.util as _importlib_util  # noqa: E402
+
+try:
+    _runlog_spec = _importlib_util.spec_from_file_location(
+        "app_pilot_runlog",
+        os.path.join(os.path.dirname(os.path.dirname(HERE)), "common", "runlog.py"),
+    )
+    runlog = _importlib_util.module_from_spec(_runlog_spec)
+    _runlog_spec.loader.exec_module(runlog)
+except Exception as _runlog_err:  # noqa: BLE001
+    print(f"app-pilot: runlog unavailable ({_runlog_err}) — machine records disabled",
+          file=sys.stderr)
+    runlog = None
 
 RUNS = os.path.join(os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE), "runs")
 CURRENT = os.path.join(RUNS, ".current")
@@ -78,6 +101,13 @@ def _safe_part(value):
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-.") or "x"
 
 
+def _rig_id():
+    """The project this rig belongs to: the repo dir above scripts/app-pilot.
+    A neutral identity string — consumers key on it, nothing here does."""
+    adapter = os.path.dirname(RUNS)
+    return os.path.basename(os.path.abspath(os.path.join(adapter, "..", "..")))
+
+
 def cmd_init(args):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     scope = _safe_part(args.scope)
@@ -110,6 +140,20 @@ def cmd_init(args):
         fh.write(f"# Actions — {rid}\n")
     with open(CURRENT, "w") as fh:
         fh.write(run)
+    # Machine record beside the markdown: run.json opens here (harness-stamped
+    # — a mission can forget a step; init can't) and closes via `close`.
+    # AFTER .current: if the stamp fails, evidence still routes to THIS dir
+    # (adopted as a partial row) instead of silently landing in the previous run.
+    # Guarded: bookkeeping must never kill the run — callers do
+    # RUN=$(app-pilot init …) and need the dir on stdout regardless.
+    try:
+        if runlog is None:
+            raise RuntimeError("runlog module unavailable")
+        runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
+                        target=args.target, env=getattr(target, "MODE", None))
+    except Exception as err:  # noqa: BLE001
+        print(f"app-pilot init: run.json stamp failed ({err}) — continuing; "
+              "dashboards adopt this dir as a partial row", file=sys.stderr)
     print(run)
 
 
@@ -142,6 +186,27 @@ def cmd_act(args):
     print("logged")
 
 
+def cmd_close(args):
+    if runlog is None:
+        sys.exit("app-pilot close: runlog module unavailable — cannot settle run.json")
+    run = _run_dir(args)
+    findings = runlog.load_findings(args.findings) if args.findings else None
+    # Two-phase audit: an attempt line before (so a failed close is visible),
+    # a settled line after (so the log never asserts a close that didn't land).
+    _log(run, "actions.log", f"CLOSE attempt status={args.status}"
+         + (f" verdict={args.verdict}" if args.verdict else ""))
+    record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
+    _log(run, "actions.log", f"CLOSE settled status={record['status']}")
+    # The run is settled — drop the .current pointer so a stray follow-up
+    # note/shot can't write into a closed run dir (the next init re-points it).
+    if not getattr(args, "run", None):
+        try:
+            os.unlink(CURRENT)
+        except OSError:
+            pass
+    print(json.dumps(record, indent=2, sort_keys=True))
+
+
 def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -149,6 +214,8 @@ def main():
     pi.add_argument("--scope", required=True,
                     help="all|home|send|transactions|contacts|notifications|settings|workspace")
     pi.add_argument("--label", default=None)
+    pi.add_argument("--target", default=None,
+                    help="what the run is against (repo#N or a ticket id) — stamped into run.json")
     pi.add_argument("--driver", choices=["wake", "goal"], default=None)
     pi.set_defaults(fn=cmd_init)
     ps = sub.add_parser("shot")
@@ -165,6 +232,14 @@ def main():
     pa.add_argument("text", nargs="+")
     pa.add_argument("--run", default=None)
     pa.set_defaults(fn=cmd_act)
+    pc = sub.add_parser("close", help="settle run.json as the run's last step")
+    pc.add_argument("--status", required=True, choices=list(runlog.CLOSE_STATUSES))
+    pc.add_argument("--verdict", choices=list(runlog.VERDICTS), default=None)
+    pc.add_argument("--findings", default=None,
+                    help="path to a JSON array of findings ({id,severity,title,ticket?})")
+    pc.add_argument("--cost-usd", type=float, dest="cost_usd", default=None)
+    pc.add_argument("--run", default=None)
+    pc.set_defaults(fn=cmd_close)
     args = p.parse_args()
     args.fn(args)
 
