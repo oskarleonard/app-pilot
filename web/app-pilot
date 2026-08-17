@@ -36,6 +36,8 @@ Run bookkeeping + archival evidence:
                            (fresh headless context)
   app-pilot note <text>        append a finding
   app-pilot act <text>         append to the audit log
+  app-pilot close --status done|failed [--verdict pass|fail|mixed] [--findings J]
+                        settle the run's machine record (run.json) — the LAST step
 
 PR evidence (hosts images OFF the PR branch — see RUNBOOK "PR evidence"):
   app-pilot publish <img> --feature S [--name F] [--caption C] [--width N]
@@ -75,7 +77,7 @@ case "$cmd" in
     exec python3 "$H/core/devserver.py" "$cmd" "$@" ;;
   logs)
     exec python3 "$H/core/devserver.py" logs "${1:-40}" ;;
-  init|shot|note|act)
+  init|shot|note|act|close)
     exec python3 "$H/core/qa.py" "$cmd" "$@" ;;
   publish)
     exec python3 "$COMMON/publish.py" "$@" ;;

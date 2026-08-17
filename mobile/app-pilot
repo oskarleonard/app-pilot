@@ -44,6 +44,8 @@ Run bookkeeping + eyes & hands:
   app-pilot scroll [down|up] [--amount 0.35]   scroll native lists (NOT RNGH gestures)
   app-pilot note <text>        append a finding to the current run
   app-pilot act <text>         append a line to actions.log
+  app-pilot close --status done|failed [--verdict pass|fail|mixed] [--findings J]
+                        settle the run's machine record (run.json) — the LAST step
   app-pilot find <label>       locate an element without tapping
   app-pilot companion [ensure] idb companion check / respawn
   app-pilot target [--udid|--port|--bundle|--mode|--window]   print pinned config values
@@ -86,7 +88,7 @@ case "$cmd" in
     exec python3 "$H/core/devserver.py" metrolog "${1:-40}" ;;
   crashes)
     exec python3 "$H/core/devserver.py" crashes "${1:-20}" ;;
-  init|shot|tree|tap|type|scroll|note|act)
+  init|shot|tree|tap|type|scroll|note|act|close)
     exec python3 "$H/core/qa.py" "$cmd" "$@" ;;
   publish)
     exec python3 "$COMMON/publish.py" "$@" ;;
