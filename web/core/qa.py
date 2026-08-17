@@ -89,7 +89,7 @@ def _safe_part(value):
 def _rig_id():
     """The project this rig belongs to: the repo dir above scripts/app-pilot.
     A neutral identity string — consumers key on it, nothing here does."""
-    adapter = os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE)
+    adapter = os.path.dirname(RUNS)
     return os.path.basename(os.path.abspath(os.path.join(adapter, "..", "..")))
 
 
@@ -194,8 +194,8 @@ def main():
     pa.add_argument("--run", default=None)
     pa.set_defaults(fn=cmd_act)
     pc = sub.add_parser("close", help="settle run.json as the run's last step")
-    pc.add_argument("--status", required=True, choices=["done", "failed", "abandoned"])
-    pc.add_argument("--verdict", choices=["pass", "fail", "mixed"], default=None)
+    pc.add_argument("--status", required=True, choices=list(runlog.CLOSE_STATUSES))
+    pc.add_argument("--verdict", choices=list(runlog.VERDICTS), default=None)
     pc.add_argument("--findings", default=None,
                     help="path to a JSON array of findings ({id,severity,title,ticket?})")
     pc.add_argument("--cost-usd", type=float, dest="cost_usd", default=None)

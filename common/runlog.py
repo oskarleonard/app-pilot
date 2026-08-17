@@ -33,7 +33,8 @@ import sys
 import time
 
 SCHEMA = 1
-STATUSES = ("running", "done", "failed", "abandoned")
+CLOSE_STATUSES = ("done", "failed", "abandoned")
+STATUSES = ("running", *CLOSE_STATUSES)
 VERDICTS = ("pass", "fail", "mixed")
 
 RUN_JSON = "run.json"
@@ -91,7 +92,7 @@ def open_run(run_dir, rig, scope, goal, target=None, env=None):
 def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
     """Settle the record. Tolerant of a corrupt/missing open record: closing
     must never kill a finished run's last step — record what we know."""
-    if status not in STATUSES or status == "running":
+    if status not in CLOSE_STATUSES:
         raise ValueError("close status must be one of done|failed|abandoned")
     if verdict is not None and verdict not in VERDICTS:
         raise ValueError("verdict must be one of pass|fail|mixed")
@@ -138,7 +139,7 @@ def main(argv=None):
 
     p_close = sub.add_parser("close", help="settle run.json as the run's last step")
     p_close.add_argument("run_dir")
-    p_close.add_argument("--status", required=True, choices=[s for s in STATUSES if s != "running"])
+    p_close.add_argument("--status", required=True, choices=list(CLOSE_STATUSES))
     p_close.add_argument("--verdict", choices=list(VERDICTS))
     p_close.add_argument("--findings", help="path to a JSON array of findings")
     p_close.add_argument("--cost-usd", type=float, dest="cost_usd")
