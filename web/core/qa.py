@@ -130,12 +130,14 @@ def cmd_init(args):
         )
     with open(os.path.join(run, "actions.log"), "w") as fh:
         fh.write(f"# Actions — {rid}\n")
-    # Machine record beside the markdown: run.json opens here (harness-stamped
-    # — a mission can forget a step; init can't) and closes via `close`.
-    runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
-                    env=getattr(target, "MODE", None))
     with open(CURRENT, "w") as fh:
         fh.write(run)
+    # Machine record beside the markdown: run.json opens here (harness-stamped
+    # — a mission can forget a step; init can't) and closes via `close`.
+    # AFTER .current: if the stamp fails, evidence still routes to THIS dir
+    # (adopted as a partial row) instead of silently landing in the previous run.
+    runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
+                    env=getattr(target, "MODE", None))
     print(run)
 
 
@@ -171,11 +173,12 @@ def cmd_act(args):
 def cmd_close(args):
     run = _run_dir(args)
     findings = runlog.load_findings(args.findings) if args.findings else None
-    # Log BEFORE settling: run.json is the run's terminal act — once consumers
-    # can see a closed record, nothing else may fail after it.
-    _log(run, "actions.log", f"CLOSE status={args.status}"
+    # Two-phase audit: an attempt line before (so a failed close is visible),
+    # a settled line after (so the log never asserts a close that didn't land).
+    _log(run, "actions.log", f"CLOSE attempt status={args.status}"
          + (f" verdict={args.verdict}" if args.verdict else ""))
     record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
+    _log(run, "actions.log", f"CLOSE settled status={record['status']}")
     print(json.dumps(record, indent=2, sort_keys=True))
 
 

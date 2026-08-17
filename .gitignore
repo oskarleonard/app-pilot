@@ -1,2 +1,5 @@
 __pycache__/
 *.pyc
+
+# ensemble-ai review trails — machine-local, never committed
+.ensemble-ai/

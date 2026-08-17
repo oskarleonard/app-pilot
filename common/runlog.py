@@ -52,12 +52,20 @@ def _path(run_dir):
 def _write_atomic(run_dir, record):
     """tmp + rename so a reader never sees a half-written record. The tmp name
     is per-process so concurrent writers can't truncate each other's file;
-    allow_nan enforces the strict-JSON contract at the write boundary."""
+    allow_nan enforces the strict-JSON contract at the write boundary; a failed
+    dump removes its tmp instead of leaking it into the run dir."""
     tmp = f"{_path(run_dir)}.tmp.{os.getpid()}"
-    with open(tmp, "w") as fh:
-        json.dump(record, fh, indent=2, sort_keys=True, allow_nan=False)
-        fh.write("\n")
-    os.replace(tmp, _path(run_dir))
+    try:
+        with open(tmp, "w") as fh:
+            json.dump(record, fh, indent=2, sort_keys=True, allow_nan=False)
+            fh.write("\n")
+        os.replace(tmp, _path(run_dir))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def read_run(run_dir):
@@ -95,8 +103,11 @@ def open_run(run_dir, rig, scope, goal, target=None, env=None):
 
 
 def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
-    """Settle the record. Tolerant of a corrupt/missing open record: closing
-    must never kill a finished run's last step — record what we know."""
+    """Settle the record — close is FINAL. A retry of the identical close is an
+    idempotent no-op; any other close of a settled record refuses, so a second
+    close can never flip status while keeping the first close's verdict and
+    findings. Tolerant of a corrupt/missing open record: closing must never
+    kill a finished run's last step — record what we know, labelled."""
     if status not in CLOSE_STATUSES:
         raise ValueError("close status must be one of done|failed|abandoned")
     if verdict is not None and verdict not in VERDICTS:
@@ -104,6 +115,12 @@ def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
     if cost_usd is not None and not math.isfinite(cost_usd):
         raise ValueError("costUsd must be finite (NaN/Infinity is not valid JSON)")
     record = read_run(run_dir)
+    if record is not None and record.get("status") in CLOSE_STATUSES:
+        if record.get("status") == status and record.get("verdict") == verdict:
+            return record  # idempotent retry of the same close
+        raise ValueError(
+            f"run already closed as {record.get('status')} — close is final"
+        )
     if record is None:
         if os.path.exists(_path(run_dir)):
             print("runlog: existing run.json unreadable — rewriting from close", file=sys.stderr)
@@ -111,6 +128,9 @@ def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
             "schema": SCHEMA,
             "runId": os.path.basename(os.path.normpath(run_dir)),
             "startedAt": _now_iso(),
+            # The open record was missing/unreadable — say so rather than
+            # passing off a rig/scope/goal-less record as a full one.
+            "recovered": True,
         }
     record["status"] = status
     record["endedAt"] = _now_iso()
@@ -124,9 +144,15 @@ def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
     return record
 
 
+def _reject_constant(token):
+    raise ValueError(f"non-finite {token} in findings — not valid JSON")
+
+
 def load_findings(path):
     with open(path) as fh:
-        loaded = json.load(fh)
+        # parse_constant rejects NaN/Infinity at the door — json.load would
+        # otherwise accept them and the strict re-dump would fail later.
+        loaded = json.load(fh, parse_constant=_reject_constant)
     if not isinstance(loaded, list):
         raise ValueError("--findings file must hold a JSON array")
     return loaded

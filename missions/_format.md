@@ -52,7 +52,8 @@ steps), **Driver: wake / Driver: goal** (pacing specifics), **Watchdog**.
   `runs/<id>/run.json` (schema in `common/runlog.py`) at run-dir creation, and
   every mission's finish steps MUST settle it:
   `app-pilot close --status done|failed --verdict pass|fail|mixed`
-  (`--findings <json>` optional) as the run's LAST action. The markdown stays
+  (`--findings <json>` optional) as the run's last RUN-DIR action (driver
+  teardown — cancel pacemaker, report — may follow). The markdown stays
   the human artifact; run.json is what dashboards and tools consume. A run
   that dies unclosed can be settled by consumers from the dir's mtime — a run
   that never opened is invisible, which is why the open lives in `init`, not

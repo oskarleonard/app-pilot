@@ -184,8 +184,9 @@ on a timer EVEN IF an iteration crashed — that is the point. In this mode:
   base per the **product PR convention** (`product/RUNBOOK.md` — e.g. some
   repos want title-only bodies + self-assign). ELSE leave the branch local
   and report its name.
-- Settle the machine record LAST: `app-pilot close --status done --verdict
+- Settle the machine record: `app-pilot close --status done --verdict
   <pass|fail|mixed>` (`--findings <json>` when a findings JSON exists; a run
-  aborted midway closes `--status failed`). Nothing runs after close.
+  aborted midway closes `--status failed`). This is the last action that
+  touches the run dir — only driver teardown (the bullet below) follows.
 - (wake) do NOT schedule again · (--driven) cancel the pacemaker · report
   and stop.

@@ -90,6 +90,25 @@ class RunlogLifecycle(unittest.TestCase):
         record = runlog.close_run(self.run_dir, "abandoned")
         self.assertEqual(record["status"], "abandoned")
         self.assertIn("startedAt", record)
+        self.assertTrue(record["recovered"])  # labelled, not passed off as full
+
+    def test_close_is_final(self):
+        runlog.open_run(self.run_dir, "rig-a", "workspace", "probe-x")
+        first = runlog.close_run(self.run_dir, "done", verdict="pass")
+        # identical retry → idempotent no-op
+        self.assertEqual(runlog.close_run(self.run_dir, "done", verdict="pass"), first)
+        # any OTHER close of a settled record refuses
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "failed")
+        self.assertEqual(self.read()["verdict"], "pass")
+
+    def test_findings_file_rejects_non_finite(self):
+        findings_path = os.path.join(self.run_dir, "..", "findings-nan.json")
+        with open(findings_path, "w") as fh:
+            fh.write('[{"id":"f1","severity":"low","title":"t","score":NaN}]')
+        self.addCleanup(os.remove, findings_path)
+        with self.assertRaises(ValueError):
+            runlog.load_findings(findings_path)
 
     def test_no_tmp_residue(self):
         runlog.open_run(self.run_dir, "rig-a", "workspace", "probe-x")
