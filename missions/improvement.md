@@ -110,7 +110,9 @@ On top of them:
    one pass, no loop (skills absent → note it, proceed). IF DONE commits exist:
    push + open a PR into `base` per the **product PR convention**, body = the
    verdict table + the DEFERRED list; ELSE report the triage, no empty PR.
-   (wake) don't reschedule · (--driven) cancel the pacemaker · report + stop.
+   Settle the machine record LAST: `app-pilot close --status done --verdict
+   <pass|fail|mixed>`. (wake) don't reschedule · (--driven) cancel the
+   pacemaker · report + stop.
 
 ## Driver notes
 Same pacing machinery as bug-hunt/scenario-exec: **wake** = `ScheduleWakeup`

@@ -85,7 +85,9 @@ On top of them:
    screenshots in the adapter's `runs/<id>/` and reference them by filename.
 5. **Finish**: `app-pilot check` ground-truth sweep (if the adapter has one) —
    failures become log notes; append `## Summary` (the completion sentinel)
-   to BOTH the run log and `findings.md`; `app-pilot stop`; report totals.
+   to BOTH the run log and `findings.md`; `app-pilot stop`; settle the machine
+   record LAST — `app-pilot close --status done --verdict <pass|fail|mixed>`;
+   report totals.
 
 ## Driver notes
 Same pacing machinery as bug-hunt (wake = `ScheduleWakeup` ≈90 s with the

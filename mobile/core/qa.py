@@ -24,11 +24,14 @@ Subcommands (operate on the "current" run unless --run given):
   type  <text> [--label L] [--role R] [--clear] [--enter]   type into a (focused) field
   note  <text...>                append a finding to findings.md
   act   <text...>                append a line to actions.log
+  close --status done|failed|abandoned [--verdict pass|fail|mixed] [--findings J]
+                                 settle run.json (machine record; the LAST step)
 
 Tapping prefers idb (accessibility-label / tab-segment / fraction, via idb_ui).
 """
 import argparse
 import datetime
+import json
 import os
 import re
 import subprocess
@@ -42,6 +45,11 @@ sys.path.insert(0, os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HE
 import common  # noqa: E402
 import idb_ui  # noqa: E402
 import target  # noqa: E402
+
+# The shared engine's common/ (runlog) — appended, never prepended: mobile/core
+# has its own `common` module that must keep winning by that name.
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(HERE)), "common"))
+import runlog  # noqa: E402
 
 # Run output lives at scripts/app-pilot/runs/ (NOT core/runs/ — an earlier version
 # anchored to core/ by accident and grew two runs dirs).
@@ -76,6 +84,13 @@ def _safe_part(value):
     return re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-.") or "x"
 
 
+def _rig_id():
+    """The project this rig belongs to: the repo dir above scripts/app-pilot.
+    A neutral identity string — consumers key on it, nothing here does."""
+    adapter = os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE)
+    return os.path.basename(os.path.abspath(os.path.join(adapter, "..", "..")))
+
+
 def cmd_init(args):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     # If a driver was given (wake|goal), auto-prefix the label so the resulting
@@ -106,6 +121,10 @@ def cmd_init(args):
         f"# Findings — {rid}\n\n_Format: `[severity] screen — observation (screenshot)`_\n\n"
     )
     open(os.path.join(run, "actions.log"), "w").write(f"# Actions — {rid}\n")
+    # Machine record beside the markdown: run.json opens here (harness-stamped
+    # — a mission can forget a step; init can't) and closes via `close`.
+    runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
+                    env=getattr(target, "MODE", None))
     open(CURRENT, "w").write(run)
     print(run)
 
@@ -245,6 +264,15 @@ def cmd_act(args):
     print("logged")
 
 
+def cmd_close(args):
+    run = _run_dir(args)
+    findings = runlog.load_findings(args.findings) if args.findings else None
+    record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
+    _log(run, "actions.log", f"CLOSE status={args.status}"
+         + (f" verdict={args.verdict}" if args.verdict else ""))
+    print(json.dumps(record, indent=2, sort_keys=True))
+
+
 def main():
     p = argparse.ArgumentParser()
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -301,6 +329,14 @@ def main():
     pa.add_argument("text", nargs="+")
     pa.add_argument("--run", default=None)
     pa.set_defaults(fn=cmd_act)
+    pc = sub.add_parser("close", help="settle run.json as the run's last step")
+    pc.add_argument("--status", required=True, choices=["done", "failed", "abandoned"])
+    pc.add_argument("--verdict", choices=["pass", "fail", "mixed"], default=None)
+    pc.add_argument("--findings", default=None,
+                    help="path to a JSON array of findings ({id,severity,title,ticket?})")
+    pc.add_argument("--cost-usd", type=float, dest="cost_usd", default=None)
+    pc.add_argument("--run", default=None)
+    pc.set_defaults(fn=cmd_close)
     args = p.parse_args()
     args.fn(args)
 
