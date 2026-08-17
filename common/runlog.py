@@ -28,6 +28,7 @@ CLI (for markdown missions — no inline python needed):
 """
 import argparse
 import json
+import math
 import os
 import sys
 import time
@@ -49,21 +50,25 @@ def _path(run_dir):
 
 
 def _write_atomic(run_dir, record):
-    """tmp + rename so a reader never sees a half-written record."""
-    tmp = _path(run_dir) + ".tmp"
+    """tmp + rename so a reader never sees a half-written record. The tmp name
+    is per-process so concurrent writers can't truncate each other's file;
+    allow_nan enforces the strict-JSON contract at the write boundary."""
+    tmp = f"{_path(run_dir)}.tmp.{os.getpid()}"
     with open(tmp, "w") as fh:
-        json.dump(record, fh, indent=2, sort_keys=True)
+        json.dump(record, fh, indent=2, sort_keys=True, allow_nan=False)
         fh.write("\n")
     os.replace(tmp, _path(run_dir))
 
 
 def read_run(run_dir):
-    """The current record, or None (absent or unreadable — caller decides)."""
+    """The current record, or None (absent, unreadable, or not a dict —
+    a run.json holding `[]` or a bare string is no record; caller decides)."""
     try:
         with open(_path(run_dir)) as fh:
-            return json.load(fh)
+            loaded = json.load(fh)
     except (OSError, ValueError):
         return None
+    return loaded if isinstance(loaded, dict) else None
 
 
 def open_run(run_dir, rig, scope, goal, target=None, env=None):
@@ -96,6 +101,8 @@ def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
         raise ValueError("close status must be one of done|failed|abandoned")
     if verdict is not None and verdict not in VERDICTS:
         raise ValueError("verdict must be one of pass|fail|mixed")
+    if cost_usd is not None and not math.isfinite(cost_usd):
+        raise ValueError("costUsd must be finite (NaN/Infinity is not valid JSON)")
     record = read_run(run_dir)
     if record is None:
         if os.path.exists(_path(run_dir)):

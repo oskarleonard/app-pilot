@@ -65,6 +65,20 @@ class RunlogLifecycle(unittest.TestCase):
         with self.assertRaises(ValueError):
             runlog.close_run(self.run_dir, "done", verdict="meh")
 
+    def test_non_dict_json_is_no_record(self):
+        with open(os.path.join(self.run_dir, "run.json"), "w") as fh:
+            fh.write("[]")
+        record = runlog.open_run(self.run_dir, "rig-a", "workspace", "probe-x")
+        self.assertEqual(record["status"], "running")  # fresh dict, not the list
+        runlog.close_run(self.run_dir, "done")  # must not crash on a non-dict
+        self.assertEqual(self.read()["status"], "done")
+
+    def test_close_rejects_non_finite_cost(self):
+        runlog.open_run(self.run_dir, "rig-a", "workspace", "probe-x")
+        for bad in (float("nan"), float("inf")):
+            with self.assertRaises(ValueError):
+                runlog.close_run(self.run_dir, "done", cost_usd=bad)
+
     def test_close_survives_corrupt_open_record(self):
         with open(os.path.join(self.run_dir, "run.json"), "w") as fh:
             fh.write("{ not json")

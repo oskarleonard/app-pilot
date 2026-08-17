@@ -46,10 +46,17 @@ import common  # noqa: E402
 import idb_ui  # noqa: E402
 import target  # noqa: E402
 
-# The shared engine's common/ (runlog) — appended, never prepended: mobile/core
-# has its own `common` module that must keep winning by that name.
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(HERE)), "common"))
-import runlog  # noqa: E402
+# The shared engine's common/runlog.py, loaded by explicit path — never via
+# sys.path, where mobile/core's own `common` module (and any project-dir module
+# named `runlog`, earlier in the path) would collide or shadow.
+import importlib.util as _importlib_util  # noqa: E402
+
+_runlog_spec = _importlib_util.spec_from_file_location(
+    "app_pilot_runlog",
+    os.path.join(os.path.dirname(os.path.dirname(HERE)), "common", "runlog.py"),
+)
+runlog = _importlib_util.module_from_spec(_runlog_spec)
+_runlog_spec.loader.exec_module(runlog)
 
 # Run output lives at scripts/app-pilot/runs/ (NOT core/runs/ — an earlier version
 # anchored to core/ by accident and grew two runs dirs).
@@ -267,9 +274,11 @@ def cmd_act(args):
 def cmd_close(args):
     run = _run_dir(args)
     findings = runlog.load_findings(args.findings) if args.findings else None
-    record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
+    # Log BEFORE settling: run.json is the run's terminal act — once consumers
+    # can see a closed record, nothing else may fail after it.
     _log(run, "actions.log", f"CLOSE status={args.status}"
          + (f" verdict={args.verdict}" if args.verdict else ""))
+    record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
     print(json.dumps(record, indent=2, sort_keys=True))
 
 
