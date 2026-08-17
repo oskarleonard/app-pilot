@@ -38,14 +38,21 @@ import target  # noqa: E402
 # The shared engine's common/runlog.py, loaded by explicit path — never via
 # sys.path, where a project-dir module named `runlog` (earlier in the path)
 # would silently shadow it.
+# Guarded: a broken/partial engine checkout must not take down shot/tap/note
+# — subcommands that never touch the machine record. close fails loud instead.
 import importlib.util as _importlib_util  # noqa: E402
 
-_runlog_spec = _importlib_util.spec_from_file_location(
-    "app_pilot_runlog",
-    os.path.join(os.path.dirname(os.path.dirname(HERE)), "common", "runlog.py"),
-)
-runlog = _importlib_util.module_from_spec(_runlog_spec)
-_runlog_spec.loader.exec_module(runlog)
+try:
+    _runlog_spec = _importlib_util.spec_from_file_location(
+        "app_pilot_runlog",
+        os.path.join(os.path.dirname(os.path.dirname(HERE)), "common", "runlog.py"),
+    )
+    runlog = _importlib_util.module_from_spec(_runlog_spec)
+    _runlog_spec.loader.exec_module(runlog)
+except Exception as _runlog_err:  # noqa: BLE001
+    print(f"app-pilot: runlog unavailable ({_runlog_err}) — machine records disabled",
+          file=sys.stderr)
+    runlog = None
 
 RUNS = os.path.join(os.environ.get("APP_PILOT_PROJECT_DIR") or os.path.dirname(HERE), "runs")
 CURRENT = os.path.join(RUNS, ".current")
@@ -140,6 +147,8 @@ def cmd_init(args):
     # Guarded: bookkeeping must never kill the run — callers do
     # RUN=$(app-pilot init …) and need the dir on stdout regardless.
     try:
+        if runlog is None:
+            raise RuntimeError("runlog module unavailable")
         runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
                         target=args.target, env=getattr(target, "MODE", None))
     except Exception as err:  # noqa: BLE001
@@ -178,6 +187,8 @@ def cmd_act(args):
 
 
 def cmd_close(args):
+    if runlog is None:
+        sys.exit("app-pilot close: runlog module unavailable — cannot settle run.json")
     run = _run_dir(args)
     findings = runlog.load_findings(args.findings) if args.findings else None
     # Two-phase audit: an attempt line before (so a failed close is visible),
@@ -186,6 +197,13 @@ def cmd_close(args):
          + (f" verdict={args.verdict}" if args.verdict else ""))
     record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
     _log(run, "actions.log", f"CLOSE settled status={record['status']}")
+    # The run is settled — drop the .current pointer so a stray follow-up
+    # note/shot can't write into a closed run dir (the next init re-points it).
+    if not getattr(args, "run", None):
+        try:
+            os.unlink(CURRENT)
+        except OSError:
+            pass
     print(json.dumps(record, indent=2, sort_keys=True))
 
 

@@ -8,8 +8,13 @@ and runs must keep recording with no dashboard on the machine.
 
 Lifecycle: `open_run()` at run-dir creation (stamps status "running"),
 `close_run()` as the run's last step. A run that dies without closing can be
-settled by consumers from the dir's mtime; a run that never OPENS is invisible
-— which is why missions must open first, not close-only.
+settled by consumers from the run dir's ACTIVITY (its files' mtimes — appends
+touch files, not the dir inode); a run that never OPENS is invisible — which
+is why missions must open first, not close-only.
+
+This module is the raw lifecycle; the engines' `app-pilot close` layers audit
+logging and .current bookkeeping on top. The CLI below exists for adopting a
+run dir with zero app-pilot wiring (ad-hoc terminal QA, retro-stamping).
 
 Schema (version 1):
   { "schema": 1, "runId": "<dir basename>", "rig": "<project id>",
@@ -144,9 +149,11 @@ def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
 def _close_locked(run_dir, status, verdict, findings, cost_usd):
     record = read_run(run_dir)
     if record is not None and record.get("status") in CLOSE_STATUSES:
+        # Omitted params (None) count as matching — a bare-status retry of a
+        # richer close is still the same close, per the docstring's contract.
         same = (
             record.get("status") == status
-            and record.get("verdict") == verdict
+            and (verdict is None or record.get("verdict") == verdict)
             and (findings is None or record.get("findings") == findings)
             and (cost_usd is None or record.get("costUsd") == cost_usd)
         )

@@ -111,7 +111,8 @@ On top of them:
    push + open a PR into `base` per the **product PR convention**, body = the
    verdict table + the DEFERRED list; ELSE report the triage, no empty PR.
    Settle the machine record — the last run-dir action: `app-pilot close
-   --status done --verdict <pass|fail|mixed>`. Then driver teardown only:
+   --status done --verdict <pass|fail|mixed>` (a run aborted midway closes
+   `--status failed`). Then driver teardown only:
    (wake) don't reschedule · (--driven) cancel the pacemaker · report + stop.
 
 ## Driver notes

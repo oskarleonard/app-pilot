@@ -101,9 +101,13 @@ class RunlogLifecycle(unittest.TestCase):
         first = runlog.close_run(self.run_dir, "done", verdict="pass")
         # identical retry → idempotent no-op
         self.assertEqual(runlog.close_run(self.run_dir, "done", verdict="pass"), first)
+        # a bare-status retry (omitted params) is still the same close
+        self.assertEqual(runlog.close_run(self.run_dir, "done"), first)
         # any OTHER close of a settled record refuses
         with self.assertRaises(ValueError):
             runlog.close_run(self.run_dir, "failed")
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", verdict="fail")
         self.assertEqual(self.read()["verdict"], "pass")
 
     def test_findings_file_rejects_non_finite(self):
