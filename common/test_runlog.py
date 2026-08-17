@@ -18,6 +18,10 @@ class RunlogLifecycle(unittest.TestCase):
     def setUp(self):
         self.run_dir = tempfile.mkdtemp(prefix="20260817-101112__scope__goal-x")
         self.addCleanup(shutil.rmtree, self.run_dir, True)
+        # Fixtures get their OWN tmpdir — never fixed names in the shared
+        # system temp dir (the parent of mkdtemp).
+        self.fixtures = tempfile.mkdtemp(prefix="runlog-fixtures-")
+        self.addCleanup(shutil.rmtree, self.fixtures, True)
 
     def read(self):
         with open(os.path.join(self.run_dir, "run.json")) as fh:
@@ -103,12 +107,41 @@ class RunlogLifecycle(unittest.TestCase):
         self.assertEqual(self.read()["verdict"], "pass")
 
     def test_findings_file_rejects_non_finite(self):
-        findings_path = os.path.join(self.run_dir, "..", "findings-nan.json")
+        findings_path = os.path.join(self.fixtures, "findings-nan.json")
         with open(findings_path, "w") as fh:
             fh.write('[{"id":"f1","severity":"low","title":"t","score":NaN}]')
-        self.addCleanup(os.remove, findings_path)
         with self.assertRaises(ValueError):
             runlog.load_findings(findings_path)
+
+    def test_findings_file_rejects_non_object_entries(self):
+        findings_path = os.path.join(self.fixtures, "findings-strings.json")
+        with open(findings_path, "w") as fh:
+            fh.write('["oops", [1, 2]]')
+        with self.assertRaises(ValueError):
+            runlog.load_findings(findings_path)
+
+    def test_close_refuses_retry_with_different_findings(self):
+        runlog.open_run(self.run_dir, "rig-a", "workspace", "probe-x")
+        runlog.close_run(self.run_dir, "done", verdict="pass",
+                         findings=[{"id": "f1", "severity": "low", "title": "a"}])
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", verdict="pass",
+                             findings=[{"id": "f2", "severity": "high", "title": "b"}])
+        # a bare retry (no findings supplied) is still the identical close
+        runlog.close_run(self.run_dir, "done", verdict="pass")
+
+    def test_corrupt_record_is_kept_aside_on_close(self):
+        with open(os.path.join(self.run_dir, "run.json"), "w") as fh:
+            fh.write("{ not json")
+        runlog.close_run(self.run_dir, "failed")
+        self.assertTrue(os.path.exists(os.path.join(self.run_dir, "run.json.corrupt")))
+
+    def test_shapeless_dict_record_is_labelled_recovered(self):
+        with open(os.path.join(self.run_dir, "run.json"), "w") as fh:
+            fh.write("{}")
+        record = runlog.close_run(self.run_dir, "done")
+        self.assertTrue(record["recovered"])
+        self.assertEqual(record["schema"], runlog.SCHEMA)
 
     def test_no_tmp_residue(self):
         runlog.open_run(self.run_dir, "rig-a", "workspace", "probe-x")
@@ -120,6 +153,8 @@ class RunlogCli(unittest.TestCase):
     def setUp(self):
         self.run_dir = tempfile.mkdtemp(prefix="20260817-101112__scope__goal-cli")
         self.addCleanup(shutil.rmtree, self.run_dir, True)
+        self.fixtures = tempfile.mkdtemp(prefix="runlog-cli-fixtures-")
+        self.addCleanup(shutil.rmtree, self.fixtures, True)
         self.script = os.path.join(os.path.dirname(__file__), "runlog.py")
 
     def cli(self, *args):
@@ -132,10 +167,9 @@ class RunlogCli(unittest.TestCase):
         self.assertEqual(opened.returncode, 0, opened.stderr)
         self.assertEqual(json.loads(opened.stdout)["status"], "running")
 
-        findings_path = os.path.join(self.run_dir, "..", "findings-tmp.json")
+        findings_path = os.path.join(self.fixtures, "findings-tmp.json")
         with open(findings_path, "w") as fh:
             json.dump([{"id": "f1", "severity": "low", "title": "t"}], fh)
-        self.addCleanup(os.remove, findings_path)
 
         closed = self.cli(
             "close", self.run_dir, "--status", "done", "--verdict", "pass",
@@ -152,10 +186,9 @@ class RunlogCli(unittest.TestCase):
 
     def test_non_array_findings_file_errors(self):
         self.cli("open", self.run_dir, "--rig", "r", "--scope", "s", "--goal", "g")
-        findings_path = os.path.join(self.run_dir, "..", "findings-bad.json")
+        findings_path = os.path.join(self.fixtures, "findings-bad.json")
         with open(findings_path, "w") as fh:
             json.dump({"not": "an array"}, fh)
-        self.addCleanup(os.remove, findings_path)
         bad = self.cli("close", self.run_dir, "--status", "done", "--findings", findings_path)
         self.assertNotEqual(bad.returncode, 0)
 

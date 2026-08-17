@@ -20,7 +20,8 @@ Subcommands (operate on the "current" run unless --run given):
   note  <text...>                append a finding to findings.md
   act   <text...>                append a line to actions.log
   close --status done|failed|abandoned [--verdict pass|fail|mixed] [--findings J]
-                                 settle run.json (machine record; the LAST step)
+                                 settle run.json (machine record; the closing step —
+                                 it owns run.json and its own audit lines)
 """
 import argparse
 import datetime
@@ -136,8 +137,14 @@ def cmd_init(args):
     # — a mission can forget a step; init can't) and closes via `close`.
     # AFTER .current: if the stamp fails, evidence still routes to THIS dir
     # (adopted as a partial row) instead of silently landing in the previous run.
-    runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
-                    env=getattr(target, "MODE", None))
+    # Guarded: bookkeeping must never kill the run — callers do
+    # RUN=$(app-pilot init …) and need the dir on stdout regardless.
+    try:
+        runlog.open_run(run, rig=_rig_id(), scope=scope, goal=label or scope,
+                        target=args.target, env=getattr(target, "MODE", None))
+    except Exception as err:  # noqa: BLE001
+        print(f"app-pilot init: run.json stamp failed ({err}) — continuing; "
+              "dashboards adopt this dir as a partial row", file=sys.stderr)
     print(run)
 
 
@@ -189,6 +196,8 @@ def main():
     pi.add_argument("--scope", required=True,
                     help="all|home|send|transactions|contacts|notifications|settings|workspace")
     pi.add_argument("--label", default=None)
+    pi.add_argument("--target", default=None,
+                    help="what the run is against (repo#N or a ticket id) — stamped into run.json")
     pi.add_argument("--driver", choices=["wake", "goal"], default=None)
     pi.set_defaults(fn=cmd_init)
     ps = sub.add_parser("shot")

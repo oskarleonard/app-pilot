@@ -27,11 +27,13 @@ CLI (for markdown missions — no inline python needed):
                                  [--findings <path.json>] [--cost-usd <n>]
 """
 import argparse
+import fcntl
 import json
 import math
 import os
 import sys
 import time
+from contextlib import contextmanager
 
 SCHEMA = 1
 CLOSE_STATUSES = ("done", "failed", "abandoned")
@@ -47,6 +49,21 @@ def _now_iso():
 
 def _path(run_dir):
     return os.path.join(run_dir, RUN_JSON)
+
+
+@contextmanager
+def _run_lock(run_dir):
+    """Serialize open/close per run dir by flocking the DIRECTORY fd (no lock
+    file, no residue). 'Close is final' is only enforceable when the check and
+    the write are one critical section — without this, two closers both read
+    'running' and the last writer wins. POSIX-only, like the engines."""
+    fd = os.open(run_dir, os.O_RDONLY)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
 
 
 def _write_atomic(run_dir, record):
@@ -82,6 +99,11 @@ def read_run(run_dir):
 def open_run(run_dir, rig, scope, goal, target=None, env=None):
     """Stamp run.json at run-dir creation. Idempotent: an existing readable
     record wins (a re-run of the open step must not clobber startedAt)."""
+    with _run_lock(run_dir):
+        return _open_locked(run_dir, rig, scope, goal, target, env)
+
+
+def _open_locked(run_dir, rig, scope, goal, target, env):
     existing = read_run(run_dir)
     if existing is not None:
         return existing
@@ -103,27 +125,44 @@ def open_run(run_dir, rig, scope, goal, target=None, env=None):
 
 
 def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
-    """Settle the record — close is FINAL. A retry of the identical close is an
-    idempotent no-op; any other close of a settled record refuses, so a second
-    close can never flip status while keeping the first close's verdict and
-    findings. Tolerant of a corrupt/missing open record: closing must never
-    kill a finished run's last step — record what we know, labelled."""
+    """Settle the record — close is FINAL. A retry of the IDENTICAL close
+    (status, verdict, findings, cost all matching or omitted) is an idempotent
+    no-op; any other close of a settled record refuses — differing evidence
+    must never be silently answered with the old record. Tolerant of a
+    corrupt/missing open record: closing must never kill a finished run's last
+    step — record what we know, labelled, keeping the corrupt file aside."""
     if status not in CLOSE_STATUSES:
         raise ValueError("close status must be one of done|failed|abandoned")
     if verdict is not None and verdict not in VERDICTS:
         raise ValueError("verdict must be one of pass|fail|mixed")
     if cost_usd is not None and not math.isfinite(cost_usd):
         raise ValueError("costUsd must be finite (NaN/Infinity is not valid JSON)")
+    with _run_lock(run_dir):
+        return _close_locked(run_dir, status, verdict, findings, cost_usd)
+
+
+def _close_locked(run_dir, status, verdict, findings, cost_usd):
     record = read_run(run_dir)
     if record is not None and record.get("status") in CLOSE_STATUSES:
-        if record.get("status") == status and record.get("verdict") == verdict:
+        same = (
+            record.get("status") == status
+            and record.get("verdict") == verdict
+            and (findings is None or record.get("findings") == findings)
+            and (cost_usd is None or record.get("costUsd") == cost_usd)
+        )
+        if same:
             return record  # idempotent retry of the same close
         raise ValueError(
             f"run already closed as {record.get('status')} — close is final"
         )
     if record is None:
         if os.path.exists(_path(run_dir)):
-            print("runlog: existing run.json unreadable — rewriting from close", file=sys.stderr)
+            corrupt = _path(run_dir) + ".corrupt"
+            try:
+                os.replace(_path(run_dir), corrupt)
+                print(f"runlog: existing run.json unreadable — kept as {os.path.basename(corrupt)}, rewriting from close", file=sys.stderr)
+            except OSError:
+                print("runlog: existing run.json unreadable — rewriting from close", file=sys.stderr)
         record = {
             "schema": SCHEMA,
             "runId": os.path.basename(os.path.normpath(run_dir)),
@@ -132,6 +171,13 @@ def close_run(run_dir, status, verdict=None, findings=None, cost_usd=None):
             # passing off a rig/scope/goal-less record as a full one.
             "recovered": True,
         }
+    elif not all(k in record for k in ("runId", "startedAt", "status")):
+        # Parseable dict that isn't a v1 open record (e.g. {}) — augment it,
+        # but labelled, never passed off as a full record.
+        record.setdefault("schema", SCHEMA)
+        record.setdefault("runId", os.path.basename(os.path.normpath(run_dir)))
+        record.setdefault("startedAt", _now_iso())
+        record["recovered"] = True
     record["status"] = status
     record["endedAt"] = _now_iso()
     if verdict is not None:
@@ -155,6 +201,8 @@ def load_findings(path):
         loaded = json.load(fh, parse_constant=_reject_constant)
     if not isinstance(loaded, list):
         raise ValueError("--findings file must hold a JSON array")
+    if not all(isinstance(f, dict) for f in loaded):
+        raise ValueError("--findings entries must be objects ({id,severity,title,ticket?})")
     return loaded
 
 
