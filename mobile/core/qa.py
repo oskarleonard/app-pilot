@@ -100,9 +100,24 @@ def _safe_part(value):
 
 
 def _rig_id():
-    """The project this rig belongs to: the repo dir above scripts/app-pilot.
-    A neutral identity string — consumers key on it, nothing here does."""
+    """The rig's identity string — consumers key on it, nothing here does.
+    Resolution: APP_PILOT_RIG env -> gitignored rig.pin.local -> committed
+    rig.pin (one line beside target.py) -> the derived default: the dir above
+    scripts/app-pilot. The pins exist for monorepos, where the derived name
+    degenerates to the surface dir (every repo's web surface would be "web")."""
     adapter = os.path.dirname(RUNS)
+    pinned = os.environ.get("APP_PILOT_RIG", "").strip()
+    if not pinned:
+        for name in ("rig.pin.local", "rig.pin"):
+            try:
+                with open(os.path.join(adapter, name)) as f:
+                    pinned = f.read().strip()
+            except OSError:
+                continue
+            if pinned:
+                break
+    if pinned:
+        return _safe_part(pinned)
     return os.path.basename(os.path.abspath(os.path.join(adapter, "..", "..")))
 
 
