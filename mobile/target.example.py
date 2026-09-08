@@ -16,6 +16,13 @@ from _harness import targetkit
 
 DEVICE_NAME = "iPhone 16 Pro"  # a model no other tester uses; durable pin = the UDID in target.local
 PORT = 8092  # tester Metro port — never your dev Metro (8081) or another tester's
+
+# Compatibility stance — `app-pilot inject-rules` renders the matching release-state
+# block into AGENTS.md (source of truth for it lives HERE, not in any external system).
+#   "pre-release" (default when omitted) → no backward-compat code: change the shape,
+#                 fix every caller, delete the dead path, wipe-and-reinstall dev data.
+#   "live"        → compat binds: forward-only migrations, shipped shapes preserved.
+RELEASE = "pre-release"
 BUNDLE = "com.example.myapp.dev"  # dev-flavor bundle id (app.config.ts)
 SCHEME = "myapp"  # app.config.ts `scheme` — dev-client deep links
 UDID_ENV = "MYAPP_PILOT_UDID"  # env override for the per-machine sim pin (target.local)

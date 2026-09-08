@@ -41,6 +41,12 @@ import crashlog  # noqa: E402
 import idb_ui  # noqa: E402
 import target  # noqa: E402
 
+# The top-level common/ dir (inject_rules — the ios-pin assertion shared with
+# `app-pilot inject-rules`). Appended so `import common` above still resolves to
+# the sibling core module, not this dir.
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(HERE)), "common"))
+import inject_rules  # noqa: E402
+
 LOCAL_BACKEND_URL = getattr(target, "BACKEND_URL", None)  # ground-truth API; unset/None = project has no backend
 _BACKEND_HINT = getattr(target, "BACKEND_HINT", "start your local backend")  # printed when the backend is DOWN
 
@@ -411,6 +417,9 @@ def cmd_doctor(_):
             capture_output=True, text=True, timeout=15)
         check(f"app installed ({target.BUNDLE})", app.returncode == 0,
               f"./node_modules/.bin/expo run:ios --no-bundler --device {target.UDID}")
+    pin_ok, pin_fix = inject_rules.ios_pin_check(REPO)
+    if pin_ok is not None:
+        check("npm run ios pins the sim (target.py --udid)", pin_ok, pin_fix)
     if target.MODE == "mock" and LOCAL_BACKEND_URL:
         check(f"local backend ({LOCAL_BACKEND_URL})", backend_ok(),
               _BACKEND_HINT, warn=True)
