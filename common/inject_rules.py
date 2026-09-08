@@ -49,9 +49,9 @@ MANAGED_NOTE = (
 IOS_PIN = "--device $(python3 scripts/app-pilot/target.py --udid)"
 IOS_CANONICAL = f"expo run:ios {IOS_PIN}"
 
-# A hand-pasted copy of the release rule outside the markers matches one of these
-# (distinctive phrases from the two variants) — reported, never touched.
-STRAY_RELEASE_SIGNATURES = ("legacy fallback", "wipe-and-reinstall", "forward-only migration")
+# Both release variants open with this heading; a hand-pasted copy of the rule
+# outside the markers carries it, ordinary prose never does.
+RELEASE_HEADING = "## Release state:"
 
 
 # ── templates → canonical blocks ────────────────────────────────────────────
@@ -104,10 +104,23 @@ def rig_target_path(repo_root):
     return os.path.join(repo_root, "scripts", "app-pilot", "target.py")
 
 
+RELEASES = ("pre-release", "live")
+
+
 def read_release(target_text):
-    """`RELEASE` from the rig's target.py text; default pre-release when absent."""
-    m = re.search(r'^\s*RELEASE\s*=\s*["\'](pre-release|live)["\']', target_text or "", re.M)
-    return m.group(1) if m else "pre-release"
+    """`RELEASE` from the rig's target.py text; default pre-release when absent.
+    A present-but-unrecognized value raises ValueError rather than silently
+    falling back to pre-release — a typo must not inject the wrong compat stance
+    (e.g. the pre-release 'wipe-and-reinstall' rule into a live app)."""
+    m = re.search(r'^\s*RELEASE\s*=\s*["\']([^"\']*)["\']', target_text or "", re.M)
+    if not m:
+        return "pre-release"
+    value = m.group(1)
+    if value not in RELEASES:
+        raise ValueError(
+            f'unrecognized RELEASE {value!r} in target.py — use "pre-release" or "live"'
+        )
+    return value
 
 
 def is_mobile_rig(target_text):
@@ -200,12 +213,14 @@ def _write_ios_script(pkg, raw, fixed):
 
 
 def stray_release_note(content):
-    """A hand-pasted copy of the release rule OUTSIDE the managed markers → a note."""
+    """A hand-pasted copy of the release rule OUTSIDE the managed markers → a note.
+    Anchored on the block heading (which a real paste always carries and ordinary
+    prose never does), so unrelated wording can't trigger a false report."""
     outside = re.sub(
         re.escape(RELEASE_BEGIN) + r".*?" + re.escape(RELEASE_END), "",
         content, flags=re.DOTALL,
-    ).lower()
-    if any(sig in outside for sig in STRAY_RELEASE_SIGNATURES):
+    )
+    if RELEASE_HEADING in outside:
         return (
             "note: a hand-pasted copy of the release rule appears OUTSIDE the managed "
             "markers — left untouched; delete it so the managed block is the only copy."
@@ -250,7 +265,10 @@ def main(argv=None):
 
     tpath = rig_target_path(root)
     target_text = _read(tpath) if os.path.isfile(tpath) else ""
-    release = read_release(target_text)
+    try:
+        release = read_release(target_text)
+    except ValueError as e:
+        sys.exit(str(e))
     mobile = is_mobile_rig(target_text)
 
     content = original = _read(agents)

@@ -101,13 +101,26 @@ class Blocks(Base):
         self.assertIn("RELEASE=live", out)
 
     def test_stray_release_copy_reported_but_untouched(self):
-        prose = "# App\n\nWe keep no legacy fallbacks (wipe-and-reinstall dev data).\n"
-        self.write(self.agents, prose)
+        # a real hand-paste of the visible rule text (heading + body, no markers —
+        # with markers it would just be adopted as the managed block)
+        pasted = (inject_rules.release_block("pre-release")
+                  .replace(inject_rules.RELEASE_BEGIN, "")
+                  .replace(inject_rules.RELEASE_END, "").strip())
+        self.write(self.agents, f"# App\n\nSome prose.\n\n{pasted}\n")
         self.target('DEVICE_NAME = "iPhone 16 Pro"\n')
         self.pkg({"ios": inject_rules.IOS_CANONICAL})
         _, out = self.run_main()
         self.assertIn("hand-pasted", out.lower())
-        self.assertIn("wipe-and-reinstall dev data", self.read_agents())  # left alone
+        self.assertEqual(self.read_agents().count(inject_rules.RELEASE_HEADING), 2)  # paste left alone + managed block
+
+    def test_no_false_stray_report_for_coincidental_prose(self):
+        # ordinary prose that happens to mention the old signature phrases must NOT
+        # be flagged — it isn't a paste of the managed block.
+        self.write(self.agents, "# App\n\nWe keep no legacy fallbacks (wipe-and-reinstall dev data).\n")
+        self.target('DEVICE_NAME = "iPhone 16 Pro"\n')
+        self.pkg({"ios": inject_rules.IOS_CANONICAL})
+        _, out = self.run_main()
+        self.assertNotIn("hand-pasted", out.lower())
 
 
 class IosPin(Base):
@@ -198,6 +211,20 @@ class RigDetection(Base):
         self.assertTrue(inject_rules.is_mobile_rig('DEVICE_NAME = "iPhone 16 Pro"'))
         self.assertTrue(inject_rules.is_mobile_rig("UDID = targetkit.resolve_udid(DEVICE_NAME, ...)"))
         self.assertFalse(inject_rules.is_mobile_rig('TESTER_PORT = 3002\nSERVER_CMD = []'))
+
+    def test_unrecognized_release_value_rejected(self):
+        # a typo'd RELEASE must NOT silently fall back to pre-release
+        with self.assertRaises(ValueError):
+            inject_rules.read_release('RELEASE = "production"')
+        with self.assertRaises(ValueError):
+            inject_rules.read_release('RELEASE = "Live"')  # case-sensitive
+
+    def test_unrecognized_release_exits_via_main(self):
+        self.target('DEVICE_NAME = "iPhone 16 Pro"\nRELEASE = "production"\n')
+        self.pkg({"ios": inject_rules.IOS_CANONICAL})
+        code, _ = self.run_main()
+        self.assertNotEqual(code, 0)  # aborts with the sys.exit message, doesn't proceed
+        self.assertIn("unrecognized RELEASE", str(code))
 
 
 if __name__ == "__main__":
