@@ -128,6 +128,11 @@ from the closest available state, and note the gap).
 ## HARD RULES (non-negotiable)
 - **Branch isolation:** fixes land on `qa-auto/<stamp>` only; never commit to
   the human's branch. **Verify-or-revert.** **≤2 attempts per bug.**
+- **Honor the release stance** (the `release-state` AGENTS block, from `RELEASE`
+  in `target.py`): **pre-release** = NO backward-compat code (change the shape,
+  fix every caller, delete the dead path, wipe-and-reinstall dev data); **live**
+  = compat binds (forward-only migrations, shipped shapes preserved). Refresh
+  with `app-pilot inject-rules`.
 - **Console + network sweep every iteration** — a clean-looking screen with a
   500 in the network log is a finding, not a pass.
 - **Navigate via the ARIA snapshot** (roles/names), not coordinates. An

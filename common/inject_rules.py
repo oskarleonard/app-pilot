@@ -1,40 +1,265 @@
 #!/usr/bin/env python3
-"""Insert or refresh the `app-pilot-rules` block in a project's AGENTS.md.
+"""Insert or refresh app-pilot's managed AGENTS.md blocks + assert the ios pin.
 
-The block (QA / visual-evidence conventions — screenshots → `publish`, never
-commit) has ONE source of truth: templates/agents-app-pilot-rules.md. This keeps
-every project's copy in sync: re-running REPLACES whatever is between the
-BEGIN/END markers with the current canonical block (idempotent). If AGENTS.md has
-no block yet, the block is appended. If there's no AGENTS.md at all we refuse —
-make it canonical first (move the rules into AGENTS.md, set CLAUDE.md to
-`@AGENTS.md`) so non-Claude tools get the rules too.
+app-pilot maintains up to two managed blocks in a project's AGENTS.md, each
+delimited by BEGIN/END markers and idempotently refreshed from a template:
+
+  app-pilot-rules   QA / visual-evidence conventions (screenshots -> `publish`,
+                    never commit). Source: templates/agents-app-pilot-rules.md.
+  release-state     the app's compatibility stance, PRE-RELEASE or LIVE, chosen
+                    from `RELEASE` in the rig's scripts/app-pilot/target.py
+                    (absent = pre-release). Source: templates/agents-release-{pre-release,live}.md.
+
+Re-running REPLACES whatever is between each block's markers with the current
+canonical text (idempotent); a block with no markers yet is appended. If there's
+no AGENTS.md at all we refuse — make it canonical first (move the rules into
+AGENTS.md, set CLAUDE.md to `@AGENTS.md`) so non-Claude tools get the rules too.
+A hand-pasted copy of the release rule OUTSIDE the markers is left alone (and
+reported) so the managed block never fights an old manual paste.
+
+For MOBILE rigs it also asserts the project's `npm run ios` script pins the
+simulator from target.py — `--device $(python3 scripts/app-pilot/target.py
+--udid)` — so a fresh rig can't launch a bare `expo run:ios` into the WRONG
+sim (lived 2026-07-15). `--fix` rewrites the script in place, preserving any
+other flags (`--port`, `--no-build-cache`, ...). Web rigs skip this check.
 
 Usage:
-  app-pilot inject-rules [project-dir]   # default: the repo containing cwd
+  app-pilot inject-rules [project-dir] [--fix]
 """
+import argparse
+import json
 import os
 import re
 import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TEMPLATE = os.path.join(HERE, "..", "templates", "agents-app-pilot-rules.md")
-BEGIN = "<!-- BEGIN:app-pilot-rules -->"
-END = "<!-- END:app-pilot-rules -->"
+TEMPLATES = os.path.join(HERE, "..", "templates")
+RULES_TEMPLATE = os.path.join(TEMPLATES, "agents-app-pilot-rules.md")
+
+RULES_BEGIN, RULES_END = "<!-- BEGIN:app-pilot-rules -->", "<!-- END:app-pilot-rules -->"
+RELEASE_BEGIN, RELEASE_END = "<!-- BEGIN:release-state -->", "<!-- END:release-state -->"
+
 MANAGED_NOTE = (
-    "<!-- Managed block — source of truth: app-pilot "
-    "templates/agents-app-pilot-rules.md. Don't hand-edit between the markers; "
-    "re-sync with `app-pilot inject-rules`. -->"
+    "<!-- Managed block — source of truth: app-pilot templates/. Don't hand-edit "
+    "between the markers; re-sync with `app-pilot inject-rules`. -->"
 )
 
+# The device pin every mobile rig's `ios` npm script must carry.
+IOS_PIN = "--device $(python3 scripts/app-pilot/target.py --udid)"
+IOS_CANONICAL = f"expo run:ios {IOS_PIN}"
 
-def canonical_block():
-    """The BEGIN…END block from the template (its comment header is dropped)."""
-    text = open(TEMPLATE, encoding="utf-8").read()
-    i = text.index(BEGIN)
-    j = text.index(END) + len(END)
+# Both release variants open with this heading; a hand-pasted copy of the rule
+# outside the markers carries it, ordinary prose never does.
+RELEASE_HEADING = "## Release state:"
+
+
+# ── templates → canonical blocks ────────────────────────────────────────────
+
+def _read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _write(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
+def _block_between(text, begin, end):
+    """The begin..end block (inclusive) from `text`."""
+    i = text.index(begin)
+    j = text.index(end) + len(end)
     return text[i:j]
 
+
+def rules_block():
+    return _block_between(_read(RULES_TEMPLATE), RULES_BEGIN, RULES_END)
+
+
+def release_block(release):
+    """The BEGIN..END release-state block for `release` (its own template file)."""
+    path = os.path.join(TEMPLATES, f"agents-release-{release}.md")
+    if not os.path.isfile(path):
+        raise KeyError(f"no release variant {release!r} ({path} missing)")
+    return _block_between(_read(path), RELEASE_BEGIN, RELEASE_END)
+
+
+def upsert_block(content, begin, end, block):
+    """Refresh the begin..end block in `content`, or append it if absent.
+    Returns (new_content, action) — action in {refreshed, unchanged, inserted}."""
+    if begin in content and end in content:
+        new = re.sub(
+            re.escape(begin) + r".*?" + re.escape(end), lambda _: block,
+            content, count=1, flags=re.DOTALL,
+        )
+        return new, ("refreshed" if new != content else "unchanged")
+    tail = "" if content.endswith("\n\n") else ("\n" if content.endswith("\n") else "\n\n")
+    return f"{content}{tail}{MANAGED_NOTE}\n{block}\n", "inserted"
+
+
+# ── rig target.py reads (text-scan only — never exec the pin) ────────────────
+
+def rig_target_path(repo_root):
+    """The rig's target.py. Prefer the dispatcher's exported APP_PILOT_PROJECT_DIR
+    (the unambiguous rig dir devserver.py already trusts) so a rig that isn't at
+    <gitroot>/scripts/app-pilot — a monorepo app, a rig-less subdir — isn't
+    silently misread as having no target.py (and so mis-skipping the ios pin)."""
+    env = os.environ.get("APP_PILOT_PROJECT_DIR")
+    if env:
+        p = os.path.join(env, "target.py")
+        if os.path.isfile(p):
+            return p
+    return os.path.join(repo_root, "scripts", "app-pilot", "target.py")
+
+
+RELEASES = ("pre-release", "live")
+
+
+def read_release(target_text):
+    """`RELEASE` from the rig's target.py text; default pre-release when absent.
+    A present-but-unrecognized value raises ValueError rather than silently
+    falling back to pre-release — a typo must not inject the wrong compat stance
+    (e.g. the pre-release 'wipe-and-reinstall' rule into a live app)."""
+    m = re.search(r'^\s*RELEASE\s*=\s*["\']([^"\']*)["\']', target_text or "", re.M)
+    if not m:
+        return "pre-release"
+    value = m.group(1)
+    if value not in RELEASES:
+        raise ValueError(
+            f'unrecognized RELEASE {value!r} in target.py — use "pre-release" or "live"'
+        )
+    return value
+
+
+def is_mobile_rig(target_text):
+    """A mobile rig drives a simulator: it declares DEVICE_NAME / resolves a UDID.
+    A web rig (TESTER_PORT + SERVER_CMD, no sim) does neither → skips the ios pin.
+    Both arms ignore comments — the canonical web target.example.py mentions
+    `resolve_udid (` in a comment and must NOT be misread as mobile."""
+    text = target_text or ""
+    return bool(
+        re.search(r"^\s*DEVICE_NAME\s*=", text, re.M)
+        or re.search(r"^(?!\s*#).*\bresolve_udid\s*\(", text, re.M)
+    )
+
+
+# ── the ios-pin assertion (shared by inject-rules + `app-pilot doctor`) ───────
+
+# The pin as it must actually appear: a --device (or --device=) argument whose
+# value is a $(...) substitution running target.py --udid. A bare mention of
+# `target.py --udid` in a comment or an `echo` is NOT a pin.
+_PIN_RE = re.compile(r"--device(?:\s+|=)\$\([^)]*target\.py\s+--udid[^)]*\)")
+# --device <token | "quoted" | $(...)> in either whitespace or =value form.
+_DEVICE_ARG_RE = re.compile(r"\s*--device(?:\s+|=)(?:\$\([^)]*\)|\"[^\"]*\"|'[^']*'|\S+)")
+# Shell chaining/piping/backgrounding — a compound script we won't rewrite by regex.
+_COMPOUND_RE = re.compile(r"[;|&]")
+_EXPO_RUN_IOS_RE = re.compile(r"\bexpo\s+run:ios\b")
+
+
+def ios_pinned(script):
+    """True when the `ios` script carries the target.py --udid device pin as a
+    real --device argument (not a bare mention in a comment or an echo)."""
+    return bool(script) and _PIN_RE.search(script) is not None
+
+
+def pin_ios_script(script):
+    """The canonical pinned `ios` script, or None when it can't be safely
+    auto-pinned: only a single, non-chained `expo run:ios` command is rewritten
+    (inserting the device pin after `run:ios` and dropping any existing --device).
+    A blank/missing script becomes the canonical command."""
+    script = (script or "").strip()
+    if not script:
+        return IOS_CANONICAL
+    if _COMPOUND_RE.search(script) or not _EXPO_RUN_IOS_RE.search(script):
+        return None  # chained, or not an `expo run:ios` command — don't mangle it
+    stripped = _DEVICE_ARG_RE.sub("", script).strip()
+    m = _EXPO_RUN_IOS_RE.search(stripped)
+    head, tail = stripped[: m.end()], stripped[m.end():].strip()
+    return f"{head} {IOS_PIN}" + (f" {tail}" if tail else "")
+
+
+def _load_scripts(repo_root):
+    """(package.json path, raw text, scripts dict) — scripts None if unreadable."""
+    pkg = os.path.join(repo_root, "package.json")
+    if not os.path.isfile(pkg):
+        return pkg, None, None
+    try:
+        raw = _read(pkg)
+        return pkg, raw, (json.loads(raw).get("scripts") or {})
+    except (OSError, json.JSONDecodeError):
+        return pkg, None, None
+
+
+def ios_pin_check(repo_root):
+    """For `app-pilot doctor`: (ok, fix_hint). ok is True/False, or None when
+    there's nothing to check (no readable package.json)."""
+    _, _, scripts = _load_scripts(repo_root)
+    if scripts is None:
+        return None, ""
+    ios = scripts.get("ios")
+    if ios_pinned(ios):
+        return True, ""
+    fixed = pin_ios_script(ios)
+    if fixed is None:
+        return False, _manual_pin_hint()
+    return False, f'set package.json "scripts.ios" to "{fixed}"  (or `app-pilot inject-rules --fix`)'
+
+
+def _manual_pin_hint():
+    return (f'npm run ios is not a plain `expo run:ios` command, so it can\'t be '
+            f'auto-pinned — set package.json "scripts.ios" to "{IOS_CANONICAL}" '
+            f'(adapting your own flags) by hand')
+
+
+def check_ios_pin(repo_root, fix=False):
+    """For inject-rules: assert (and optionally --fix) the `ios` pin.
+    Returns (mark, message): PASS / FAIL / fixed / SKIP."""
+    pkg, raw, scripts = _load_scripts(repo_root)
+    if scripts is None:
+        return "SKIP", "no readable package.json at repo root — cannot check the ios pin"
+    ios = scripts.get("ios")
+    if ios_pinned(ios):
+        return "PASS", "npm run ios pins the sim via target.py --udid"
+    fixed = pin_ios_script(ios)
+    if fixed is None:
+        return "FAIL", _manual_pin_hint()  # never auto-rewrite a command we can't parse
+    if not fix:
+        return "FAIL", (
+            "npm run ios does not pin the sim from target.py — a bare "
+            "`expo run:ios` launches the WRONG simulator.\n"
+            f'       fix: set package.json "scripts.ios" to "{fixed}"   (or re-run with --fix)'
+        )
+    _write_ios_script(pkg, raw, fixed)
+    return "fixed", f'rewrote package.json "scripts.ios" -> "{fixed}"'
+
+
+def _write_ios_script(pkg, raw, fixed):
+    """Set scripts.ios to `fixed` and write package.json back. Operates on the
+    PARSED object so only the npm script is touched — never a top-level or nested
+    `ios` key that happens to appear first in the raw text."""
+    data = json.loads(raw)
+    data.setdefault("scripts", {})["ios"] = fixed
+    _write(pkg, json.dumps(data, indent=2) + "\n")
+
+
+def stray_release_note(content):
+    """A hand-pasted copy of the release rule OUTSIDE the managed markers → a note.
+    Anchored on the block heading (which a real paste always carries and ordinary
+    prose never does), so unrelated wording can't trigger a false report."""
+    outside = re.sub(
+        re.escape(RELEASE_BEGIN) + r".*?" + re.escape(RELEASE_END), "",
+        content, flags=re.DOTALL,
+    )
+    if RELEASE_HEADING in outside:
+        return (
+            "note: a hand-pasted copy of the release rule appears OUTSIDE the managed "
+            "markers — left untouched; delete it so the managed block is the only copy."
+        )
+    return None
+
+
+# ── driver ───────────────────────────────────────────────────────────────────
 
 def repo_root(start):
     try:
@@ -47,11 +272,21 @@ def repo_root(start):
         return start  # not a git repo — operate on the dir as-is
 
 
-def main():
-    start = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
-    if not os.path.isdir(start):
-        sys.exit(f"not a directory: {start}")
-    agents = os.path.join(repo_root(start), "AGENTS.md")
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        prog="app-pilot inject-rules",
+        description="Insert/refresh app-pilot's managed AGENTS.md blocks + assert the ios pin.",
+    )
+    ap.add_argument("project_dir", nargs="?", default=os.getcwd(),
+                    help="a dir inside the target repo (default: cwd)")
+    ap.add_argument("--fix", action="store_true",
+                    help="rewrite package.json's ios script to pin the sim (mobile rigs)")
+    args = ap.parse_args(argv)
+
+    if not os.path.isdir(args.project_dir):
+        sys.exit(f"not a directory: {args.project_dir}")
+    root = repo_root(args.project_dir)
+    agents = os.path.join(root, "AGENTS.md")
     if not os.path.isfile(agents):
         sys.exit(
             f"no AGENTS.md at {agents}\n"
@@ -59,27 +294,42 @@ def main():
             "set CLAUDE.md to `@AGENTS.md`, then re-run."
         )
 
-    block = canonical_block()
-    content = open(agents, encoding="utf-8").read()
+    tpath = rig_target_path(root)
+    target_text = _read(tpath) if os.path.isfile(tpath) else ""
+    try:
+        release = read_release(target_text)
+    except ValueError as e:
+        sys.exit(str(e))
+    mobile = is_mobile_rig(target_text)
 
-    if BEGIN in content and END in content:
-        new = re.sub(
-            re.escape(BEGIN) + r".*?" + re.escape(END), lambda _: block,
-            content, count=1, flags=re.DOTALL,
-        )
-        action = "refreshed"
+    content = original = _read(agents)
+    content, a1 = upsert_block(content, RULES_BEGIN, RULES_END, rules_block())
+    content, a2 = upsert_block(content, RELEASE_BEGIN, RELEASE_END, release_block(release))
+    if content != original:
+        _write(agents, content)
+
+    print(f"app-pilot-rules block: {a1}")
+    print(f"release-state block: {a2} (RELEASE={release})")
+    if not re.search(r"^\s*RELEASE\s*=", target_text, re.M):
+        # RELEASE is brand-new, so every pre-existing rig omits it and defaults to
+        # pre-release — which injects the destructive 'wipe-and-reinstall' stance.
+        # Warn loudly so a genuinely live app isn't silently told to break its data.
+        print("warning: RELEASE is unset in target.py — assuming pre-release "
+              '(no backward-compat). If this app has real users, set RELEASE = "live" '
+              "in scripts/app-pilot/target.py and re-run.")
+    note = stray_release_note(content)
+    if note:
+        print(note)
+
+    failed = False
+    if mobile:
+        mark, msg = check_ios_pin(root, fix=args.fix)
+        print(f"[{mark}] ios pin: {msg}")
+        failed = mark == "FAIL"
     else:
-        tail = "" if content.endswith("\n\n") else (
-            "\n" if content.endswith("\n") else "\n\n"
-        )
-        new = f"{content}{tail}{MANAGED_NOTE}\n{block}\n"
-        action = "inserted"
+        print("ios pin: skipped (web rig — no simulator to pin)")
 
-    if new == content:
-        print(f"already up to date — {agents}")
-        return
-    open(agents, "w", encoding="utf-8").write(new)
-    print(f"{action} app-pilot-rules block in {agents}")
+    sys.exit(1 if failed else 0)
 
 
 if __name__ == "__main__":

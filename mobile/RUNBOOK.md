@@ -146,6 +146,12 @@ on the first iteration — don't guess labels.
   the human's branch or `main`; never force-push. The PR is the review gate.
 - **Verify-or-revert:** never keep an unverified fix.
 - **Bounded fixing:** ≤ 2 fix attempts per bug, then escalate — never spiral.
+- **Honor the release stance** (the `release-state` AGENTS block, from `RELEASE`
+  in `target.py`): **pre-release** apps carry NO backward-compat code — change
+  the shape, fix every caller, delete the dead path, wipe-and-reinstall dev data;
+  don't add legacy fallbacks/aliases/old-shape readers. **live** apps: compat
+  binds — forward-only migrations, shipped shapes preserved. Refresh the block
+  with `app-pilot inject-rules`.
 - **Tap by accessibility label (idb):** `app-pilot tree` lists every labelled element +
   frame; tap with `app-pilot tap --label "AXLabel"` (content) or `app-pilot tap --tab <name>`
   (tab names: target.py `TAB_ORDER`; the iOS 26 floating pill is probed via

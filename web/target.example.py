@@ -13,6 +13,13 @@ from _harness import targetkit
 
 TESTER_PORT = 3002  # never your dev port (e.g. web dev 3000, storybook 6006)
 
+# Compatibility stance — `app-pilot inject-rules` renders the matching release-state
+# block into AGENTS.md (source of truth for it lives HERE, not in any external system).
+#   "pre-release" (default when omitted) → no backward-compat code: change the shape,
+#                 fix every caller, delete the dead path, wipe-and-reinstall dev data.
+#   "live"        → compat binds: forward-only migrations, shipped shapes preserved.
+RELEASE = "pre-release"
+
 # Ground truth (omit or None = no backend; health skips the ping).
 BACKEND_URL = "http://localhost:8080"
 BACKEND_HINT = "cd ../my-backend && make run"

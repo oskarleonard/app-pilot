@@ -45,6 +45,26 @@ so the choice is stable per machine forever after. To retarget: delete
 The engine itself (this folder: `core/`, the dispatcher, this README,
 RUNBOOK.md) is shared by every project — fix things HERE.
 
+## AGENTS.md blocks + the `npm run ios` pin
+
+`app-pilot inject-rules` maintains two idempotent managed blocks in the
+project's `AGENTS.md`: `app-pilot-rules` (QA/evidence conventions) and
+`release-state` (the app's compat stance, chosen by `RELEASE` in `target.py`
+— `"pre-release"` by default, or `"live"`). Re-run it to refresh; a hand-pasted
+copy of a rule outside the markers is left alone (reported).
+
+For a mobile rig it also asserts `package.json`'s `ios` script **pins the
+simulator from `target.py`**:
+
+```json
+"ios": "expo run:ios --device $(python3 scripts/app-pilot/target.py --udid)"
+```
+
+A bare `expo run:ios` launches whatever sim Xcode last used — the WRONG one.
+`inject-rules` prints a `FAIL` with the exact fix (and `--fix` rewrites the
+script in place, keeping any `--port`/`--no-build-cache` flags); `app-pilot
+doctor` runs the same check.
+
 ## Pinning — parallel testers coexist
 
 `target.py` pins the tester to **one sim model + one Metro port**, per

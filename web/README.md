@@ -41,6 +41,15 @@ the run). `app-pilot shot` archival screenshots are headless regardless.
 └── runs/                # per-run output (gitignored)
 ```
 
+## AGENTS.md blocks
+
+`app-pilot inject-rules` maintains two idempotent managed blocks in the
+project's `AGENTS.md`: `app-pilot-rules` (QA/evidence conventions) and
+`release-state` (the app's compat stance, chosen by `RELEASE` in `target.py`
+— `"pre-release"` by default, or `"live"`). Re-run it to refresh; a hand-pasted
+copy of a rule outside the markers is left alone (reported). The mobile-only
+`npm run ios` simulator-pin check does not apply to web rigs.
+
 ## The division of labor
 
 - **Playwright MCP** = live eyes/hands: navigate, click by role/name, type,

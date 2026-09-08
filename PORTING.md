@@ -15,7 +15,7 @@ per-app values, and the empirical platform gotchas.
 | `product/` (app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md + RUNBOOK addendum) | **Re-derive per product** — this asserts THIS app's ground truth and rails. Port the *pattern* (see "Ground-truth layer"), never the rules. |
 | `ext/` | Only if the project needs extra mechanics (e.g. an autoplay layer for timed gameplay — sub-3s response windows an LLM can't keep up with live). |
 | `.claude/commands/app-pilot*.md` | Thin per-project pointers: "follow the engine RUNBOOK + product/RUNBOOK.md". The Rails sections are the per-app customization point. |
-| `AGENTS.md` `app-pilot-rules` block | `app-pilot inject-rules` (or `python3 <engine>/common/inject_rules.py <dir>` for a rig-less repo) inserts/refreshes the block from `templates/agents-app-pilot-rules.md` into the project's `AGENTS.md` — **idempotent**. Single source of truth (screenshots → `publish`, never commit); edit the template + re-run, never the project copy. AGENTS.md must be canonical first (`CLAUDE.md` = `@AGENTS.md`). |
+| `AGENTS.md` managed blocks (`app-pilot-rules` + `release-state`) | `app-pilot inject-rules [--fix]` (or `python3 <engine>/common/inject_rules.py <dir>` for a rig-less repo) inserts/refreshes two blocks from `templates/` into the project's `AGENTS.md` — **idempotent**: `app-pilot-rules` (screenshots → `publish`, never commit) and `release-state` (compat stance from `RELEASE` in `target.py`, absent = pre-release). On a mobile rig it also asserts `package.json`'s `ios` script pins the sim (`--fix` rewrites it) and **exits 1** if unpinned. Edit the templates + re-run, never the project copy. AGENTS.md must be canonical first (`CLAUDE.md` = `@AGENTS.md`). |
 
 ## Per-app values (target.py)
 
