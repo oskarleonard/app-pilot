@@ -8,7 +8,7 @@ delimited by BEGIN/END markers and idempotently refreshed from a template:
                     never commit). Source: templates/agents-app-pilot-rules.md.
   release-state     the app's compatibility stance, PRE-RELEASE or LIVE, chosen
                     from `RELEASE` in the rig's scripts/app-pilot/target.py
-                    (absent = pre-release). Source: templates/agents-release-state.md.
+                    (absent = pre-release). Source: templates/agents-release-{pre-release,live}.md.
 
 Re-running REPLACES whatever is between each block's markers with the current
 canonical text (idempotent); a block with no markers yet is appended. If there's
@@ -36,7 +36,6 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 TEMPLATES = os.path.join(HERE, "..", "templates")
 RULES_TEMPLATE = os.path.join(TEMPLATES, "agents-app-pilot-rules.md")
-RELEASE_TEMPLATE = os.path.join(TEMPLATES, "agents-release-state.md")
 
 RULES_BEGIN, RULES_END = "<!-- BEGIN:app-pilot-rules -->", "<!-- END:app-pilot-rules -->"
 RELEASE_BEGIN, RELEASE_END = "<!-- BEGIN:release-state -->", "<!-- END:release-state -->"
@@ -57,6 +56,16 @@ STRAY_RELEASE_SIGNATURES = ("legacy fallback", "wipe-and-reinstall", "forward-on
 
 # ── templates → canonical blocks ────────────────────────────────────────────
 
+def _read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+def _write(path, text):
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def _block_between(text, begin, end):
     """The begin..end block (inclusive) from `text`."""
     i = text.index(begin)
@@ -65,19 +74,15 @@ def _block_between(text, begin, end):
 
 
 def rules_block():
-    return _block_between(open(RULES_TEMPLATE, encoding="utf-8").read(), RULES_BEGIN, RULES_END)
+    return _block_between(_read(RULES_TEMPLATE), RULES_BEGIN, RULES_END)
 
 
 def release_block(release):
-    """The BEGIN..END block for the matching VARIANT in the release template."""
-    text = open(RELEASE_TEMPLATE, encoding="utf-8").read()
-    m = re.search(
-        r"<!-- VARIANT:%s -->(.*?)<!-- /VARIANT:%s -->" % (re.escape(release), re.escape(release)),
-        text, re.DOTALL,
-    )
-    if not m:
-        raise KeyError(f"no release variant {release!r} in {RELEASE_TEMPLATE}")
-    return _block_between(m.group(1), RELEASE_BEGIN, RELEASE_END)
+    """The BEGIN..END release-state block for `release` (its own template file)."""
+    path = os.path.join(TEMPLATES, f"agents-release-{release}.md")
+    if not os.path.isfile(path):
+        raise KeyError(f"no release variant {release!r} ({path} missing)")
+    return _block_between(_read(path), RELEASE_BEGIN, RELEASE_END)
 
 
 def upsert_block(content, begin, end, block):
@@ -143,7 +148,7 @@ def _load_scripts(repo_root):
     if not os.path.isfile(pkg):
         return pkg, None, None
     try:
-        raw = open(pkg, encoding="utf-8").read()
+        raw = _read(pkg)
         return pkg, raw, (json.loads(raw).get("scripts") or {})
     except (OSError, json.JSONDecodeError):
         return pkg, None, None
@@ -191,7 +196,7 @@ def _write_ios_script(pkg, raw, fixed):
         data = json.loads(raw)
         data.setdefault("scripts", {})["ios"] = fixed
         new = json.dumps(data, indent=2) + "\n"
-    open(pkg, "w", encoding="utf-8").write(new)
+    _write(pkg, new)
 
 
 def stray_release_note(content):
@@ -244,15 +249,15 @@ def main(argv=None):
         )
 
     tpath = rig_target_path(root)
-    target_text = open(tpath, encoding="utf-8").read() if os.path.isfile(tpath) else ""
+    target_text = _read(tpath) if os.path.isfile(tpath) else ""
     release = read_release(target_text)
     mobile = is_mobile_rig(target_text)
 
-    content = original = open(agents, encoding="utf-8").read()
+    content = original = _read(agents)
     content, a1 = upsert_block(content, RULES_BEGIN, RULES_END, rules_block())
     content, a2 = upsert_block(content, RELEASE_BEGIN, RELEASE_END, release_block(release))
     if content != original:
-        open(agents, "w", encoding="utf-8").write(content)
+        _write(agents, content)
 
     print(f"app-pilot-rules block: {a1}")
     print(f"release-state block: {a2} (RELEASE={release})")

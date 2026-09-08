@@ -29,22 +29,30 @@ class Base(unittest.TestCase):
         self.root = tempfile.mkdtemp(prefix="inject-rules-test-")
         self.addCleanup(shutil.rmtree, self.root, True)
         self.agents = os.path.join(self.root, "AGENTS.md")
-        open(self.agents, "w").write("# My App\n\nSome prose.\n")
+        self.write(self.agents, "# My App\n\nSome prose.\n")
         self.rig = os.path.join(self.root, "scripts", "app-pilot")
         os.makedirs(self.rig)
 
+    def write(self, path, text):
+        with open(path, "w") as f:
+            f.write(text)
+
+    def read(self, path):
+        with open(path) as f:
+            return f.read()
+
     def target(self, text):
-        open(os.path.join(self.rig, "target.py"), "w").write(text)
+        self.write(os.path.join(self.rig, "target.py"), text)
 
     def pkg(self, scripts, name="myapp"):
-        open(os.path.join(self.root, "package.json"), "w").write(
-            json.dumps({"name": name, "scripts": scripts}, indent=2) + "\n")
+        self.write(os.path.join(self.root, "package.json"),
+                   json.dumps({"name": name, "scripts": scripts}, indent=2) + "\n")
 
     def ios_of(self):
-        return json.load(open(os.path.join(self.root, "package.json")))["scripts"].get("ios")
+        return json.loads(self.read(os.path.join(self.root, "package.json")))["scripts"].get("ios")
 
     def read_agents(self):
-        return open(self.agents).read()
+        return self.read(self.agents)
 
     def run_main(self, *argv):
         buf = io.StringIO()
@@ -94,7 +102,7 @@ class Blocks(Base):
 
     def test_stray_release_copy_reported_but_untouched(self):
         prose = "# App\n\nWe keep no legacy fallbacks (wipe-and-reinstall dev data).\n"
-        open(self.agents, "w").write(prose)
+        self.write(self.agents, prose)
         self.target('DEVICE_NAME = "iPhone 16 Pro"\n')
         self.pkg({"ios": inject_rules.IOS_CANONICAL})
         _, out = self.run_main()
@@ -138,7 +146,7 @@ class IosPin(Base):
         self.pkg({"start": "expo start"})
         mark, _ = inject_rules.check_ios_pin(self.root, fix=True)
         self.assertEqual(mark, "fixed")
-        scripts = json.load(open(os.path.join(self.root, "package.json")))["scripts"]
+        scripts = json.loads(self.read(os.path.join(self.root, "package.json")))["scripts"]
         self.assertEqual(scripts["ios"], inject_rules.IOS_CANONICAL)
         self.assertEqual(scripts["start"], "expo start")  # sibling script preserved
 
