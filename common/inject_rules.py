@@ -101,6 +101,15 @@ def upsert_block(content, begin, end, block):
 # ── rig target.py reads (text-scan only — never exec the pin) ────────────────
 
 def rig_target_path(repo_root):
+    """The rig's target.py. Prefer the dispatcher's exported APP_PILOT_PROJECT_DIR
+    (the unambiguous rig dir devserver.py already trusts) so a rig that isn't at
+    <gitroot>/scripts/app-pilot — a monorepo app, a rig-less subdir — isn't
+    silently misread as having no target.py (and so mis-skipping the ios pin)."""
+    env = os.environ.get("APP_PILOT_PROJECT_DIR")
+    if env:
+        p = os.path.join(env, "target.py")
+        if os.path.isfile(p):
+            return p
     return os.path.join(repo_root, "scripts", "app-pilot", "target.py")
 
 
@@ -125,32 +134,47 @@ def read_release(target_text):
 
 def is_mobile_rig(target_text):
     """A mobile rig drives a simulator: it declares DEVICE_NAME / resolves a UDID.
-    A web rig (TESTER_PORT + SERVER_CMD, no sim) does neither → skips the ios pin."""
+    A web rig (TESTER_PORT + SERVER_CMD, no sim) does neither → skips the ios pin.
+    Both arms ignore comments — the canonical web target.example.py mentions
+    `resolve_udid (` in a comment and must NOT be misread as mobile."""
     text = target_text or ""
-    return bool(re.search(r"^\s*DEVICE_NAME\s*=", text, re.M) or re.search(r"resolve_udid\s*\(", text))
+    return bool(
+        re.search(r"^\s*DEVICE_NAME\s*=", text, re.M)
+        or re.search(r"^(?!\s*#).*\bresolve_udid\s*\(", text, re.M)
+    )
 
 
 # ── the ios-pin assertion (shared by inject-rules + `app-pilot doctor`) ───────
 
+# The pin as it must actually appear: a --device (or --device=) argument whose
+# value is a $(...) substitution running target.py --udid. A bare mention of
+# `target.py --udid` in a comment or an `echo` is NOT a pin.
+_PIN_RE = re.compile(r"--device(?:\s+|=)\$\([^)]*target\.py\s+--udid[^)]*\)")
+# --device <token | "quoted" | $(...)> in either whitespace or =value form.
+_DEVICE_ARG_RE = re.compile(r"\s*--device(?:\s+|=)(?:\$\([^)]*\)|\"[^\"]*\"|'[^']*'|\S+)")
+# Shell chaining/piping/backgrounding — a compound script we won't rewrite by regex.
+_COMPOUND_RE = re.compile(r"[;|&]")
+_EXPO_RUN_IOS_RE = re.compile(r"\bexpo\s+run:ios\b")
+
+
 def ios_pinned(script):
-    """True when the `ios` script pins the sim from target.py (`target.py --udid`)."""
-    return bool(script) and re.search(r"target\.py\s+--udid", script) is not None
+    """True when the `ios` script carries the target.py --udid device pin as a
+    real --device argument (not a bare mention in a comment or an echo)."""
+    return bool(script) and _PIN_RE.search(script) is not None
 
 
 def pin_ios_script(script):
-    """The canonical pinned `ios` script: insert the target.py --udid device pin
-    after `run:ios`, preserving other flags and replacing any hardcoded --device."""
+    """The canonical pinned `ios` script, or None when it can't be safely
+    auto-pinned: only a single, non-chained `expo run:ios` command is rewritten
+    (inserting the device pin after `run:ios` and dropping any existing --device).
+    A blank/missing script becomes the canonical command."""
     script = (script or "").strip()
     if not script:
         return IOS_CANONICAL
-    # Drop any existing --device <token | "quoted" | $(...)> — idempotent, and
-    # replaces a hardcoded UDID with the pin.
-    stripped = re.sub(
-        r"\s*--device\s+(?:\$\([^)]*\)|\"[^\"]*\"|'[^']*'|\S+)", "", script,
-    ).strip()
-    m = re.search(r"run:ios", stripped)
-    if not m:
-        return f"{stripped} {IOS_PIN}".strip() if stripped else IOS_CANONICAL
+    if _COMPOUND_RE.search(script) or not _EXPO_RUN_IOS_RE.search(script):
+        return None  # chained, or not an `expo run:ios` command — don't mangle it
+    stripped = _DEVICE_ARG_RE.sub("", script).strip()
+    m = _EXPO_RUN_IOS_RE.search(stripped)
     head, tail = stripped[: m.end()], stripped[m.end():].strip()
     return f"{head} {IOS_PIN}" + (f" {tail}" if tail else "")
 
@@ -176,7 +200,16 @@ def ios_pin_check(repo_root):
     ios = scripts.get("ios")
     if ios_pinned(ios):
         return True, ""
-    return False, f'set package.json "scripts.ios" to "{pin_ios_script(ios)}"  (or `app-pilot inject-rules --fix`)'
+    fixed = pin_ios_script(ios)
+    if fixed is None:
+        return False, _manual_pin_hint()
+    return False, f'set package.json "scripts.ios" to "{fixed}"  (or `app-pilot inject-rules --fix`)'
+
+
+def _manual_pin_hint():
+    return (f'npm run ios is not a plain `expo run:ios` command, so it can\'t be '
+            f'auto-pinned — set package.json "scripts.ios" to "{IOS_CANONICAL}" '
+            f'(adapting your own flags) by hand')
 
 
 def check_ios_pin(repo_root, fix=False):
@@ -189,6 +222,8 @@ def check_ios_pin(repo_root, fix=False):
     if ios_pinned(ios):
         return "PASS", "npm run ios pins the sim via target.py --udid"
     fixed = pin_ios_script(ios)
+    if fixed is None:
+        return "FAIL", _manual_pin_hint()  # never auto-rewrite a command we can't parse
     if not fix:
         return "FAIL", (
             "npm run ios does not pin the sim from target.py — a bare "
@@ -200,16 +235,12 @@ def check_ios_pin(repo_root, fix=False):
 
 
 def _write_ios_script(pkg, raw, fixed):
-    """Rewrite scripts.ios to `fixed`. In-place string edit when the key exists
-    (preserves the file's formatting); a structured rewrite adds a missing key."""
-    body = json.dumps(fixed)[1:-1]  # JSON-escaped value, without the surrounding quotes
-    pat = re.compile(r'("ios"\s*:\s*")(?:\\.|[^"\\])*(")')
-    new, n = pat.subn(lambda m: m.group(1) + body + m.group(2), raw, count=1)
-    if not n:  # no ios key yet — add one
-        data = json.loads(raw)
-        data.setdefault("scripts", {})["ios"] = fixed
-        new = json.dumps(data, indent=2) + "\n"
-    _write(pkg, new)
+    """Set scripts.ios to `fixed` and write package.json back. Operates on the
+    PARSED object so only the npm script is touched — never a top-level or nested
+    `ios` key that happens to appear first in the raw text."""
+    data = json.loads(raw)
+    data.setdefault("scripts", {})["ios"] = fixed
+    _write(pkg, json.dumps(data, indent=2) + "\n")
 
 
 def stray_release_note(content):
@@ -279,6 +310,13 @@ def main(argv=None):
 
     print(f"app-pilot-rules block: {a1}")
     print(f"release-state block: {a2} (RELEASE={release})")
+    if not re.search(r"^\s*RELEASE\s*=", target_text, re.M):
+        # RELEASE is brand-new, so every pre-existing rig omits it and defaults to
+        # pre-release — which injects the destructive 'wipe-and-reinstall' stance.
+        # Warn loudly so a genuinely live app isn't silently told to break its data.
+        print("warning: RELEASE is unset in target.py — assuming pre-release "
+              '(no backward-compat). If this app has real users, set RELEASE = "live" '
+              "in scripts/app-pilot/target.py and re-run.")
     note = stray_release_note(content)
     if note:
         print(note)

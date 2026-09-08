@@ -26,6 +26,10 @@ import inject_rules  # noqa: E402
 
 class Base(unittest.TestCase):
     def setUp(self):
+        # hermetic: the dispatcher's env var must not leak into rig resolution
+        prev = os.environ.pop("APP_PILOT_PROJECT_DIR", None)
+        if prev is not None:
+            self.addCleanup(os.environ.__setitem__, "APP_PILOT_PROJECT_DIR", prev)
         self.root = tempfile.mkdtemp(prefix="inject-rules-test-")
         self.addCleanup(shutil.rmtree, self.root, True)
         self.agents = os.path.join(self.root, "AGENTS.md")
@@ -176,6 +180,79 @@ class IosPin(Base):
         self.assertIn("target.py --udid", hint)
         os.remove(os.path.join(self.root, "package.json"))
         self.assertEqual(inject_rules.ios_pin_check(self.root), (None, ""))
+
+
+class PinRobustness(Base):
+    """Regressions for the cross-vendor review of the pin logic."""
+
+    def test_ios_pinned_rejects_inert_mentions(self):
+        # a bare mention of the phrase (comment / echo / wrong flag) is NOT a pin
+        self.assertFalse(inject_rules.ios_pinned("expo run:ios # target.py --udid"))
+        self.assertFalse(inject_rules.ios_pinned("echo target.py --udid && expo run:ios"))
+        self.assertFalse(inject_rules.ios_pinned(
+            "expo run:ios --udid $(python3 scripts/app-pilot/target.py --udid)"))  # --udid, not --device
+        self.assertTrue(inject_rules.ios_pinned(inject_rules.IOS_CANONICAL))
+
+    def test_canonical_web_example_not_mobile(self):
+        # the shipped web/target.example.py mentions `resolve_udid (` in a comment
+        engine = os.path.dirname(HERE)
+        web = self.read(os.path.join(engine, "web", "target.example.py"))
+        mobile = self.read(os.path.join(engine, "mobile", "target.example.py"))
+        self.assertFalse(inject_rules.is_mobile_rig(web))
+        self.assertTrue(inject_rules.is_mobile_rig(mobile))
+
+    def test_unpinnable_scripts_refused_not_mangled(self):
+        # not an `expo run:ios` command, or chained — pin_ios_script returns None
+        for script in ("expo start --ios", "react-native run-ios",
+                       "expo run:ios && tool --device foo"):
+            self.assertIsNone(inject_rules.pin_ios_script(script), script)
+
+    def test_fix_wont_corrupt_non_run_ios_script(self):
+        self.pkg({"ios": "expo start --ios"})
+        mark, msg = inject_rules.check_ios_pin(self.root, fix=True)
+        self.assertEqual(mark, "FAIL")  # not "fixed"
+        self.assertIn("by hand", msg)
+        self.assertEqual(self.ios_of(), "expo start --ios")  # left untouched
+
+    def test_fix_replaces_equals_form_device_once(self):
+        self.pkg({"ios": "expo run:ios --device=ABC-UDID --port 8092"})
+        inject_rules.check_ios_pin(self.root, fix=True)
+        ios = self.ios_of()
+        self.assertNotIn("ABC-UDID", ios)
+        self.assertEqual(ios.count("--device"), 1)
+        self.assertIn("--port 8092", ios)
+
+    def test_write_only_touches_scripts_ios(self):
+        # a nested/top-level `ios` key that precedes scripts.ios must be preserved
+        raw = ('{\n  "ios": {"buildNumber": "7"},\n'
+               '  "scripts": {"ios": "expo run:ios"}\n}\n')
+        self.write(os.path.join(self.root, "package.json"), raw)
+        inject_rules.check_ios_pin(self.root, fix=True)
+        data = json.loads(self.read(os.path.join(self.root, "package.json")))
+        self.assertEqual(data["ios"], {"buildNumber": "7"})  # unrelated key intact
+        self.assertIn("target.py --udid", data["scripts"]["ios"])
+
+    def test_rig_target_path_honors_env(self, ):
+        alt = os.path.join(self.root, "elsewhere")
+        os.makedirs(alt)
+        self.write(os.path.join(alt, "target.py"), 'DEVICE_NAME = "iPhone 16 Pro"\n')
+        os.environ["APP_PILOT_PROJECT_DIR"] = alt
+        self.addCleanup(os.environ.pop, "APP_PILOT_PROJECT_DIR", None)
+        self.assertEqual(inject_rules.rig_target_path(self.root),
+                         os.path.join(alt, "target.py"))
+
+    def test_absent_release_warns(self):
+        self.target('DEVICE_NAME = "iPhone 16 Pro"\n')  # no RELEASE
+        self.pkg({"ios": inject_rules.IOS_CANONICAL})
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("RELEASE is unset", out)
+
+    def test_present_release_does_not_warn(self):
+        self.target('DEVICE_NAME = "iPhone 16 Pro"\nRELEASE = "pre-release"\n')
+        self.pkg({"ios": inject_rules.IOS_CANONICAL})
+        _, out = self.run_main()
+        self.assertNotIn("RELEASE is unset", out)
 
 
 class RigDetection(Base):

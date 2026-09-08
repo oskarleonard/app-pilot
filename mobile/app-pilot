@@ -53,8 +53,10 @@ Run bookkeeping + eyes & hands:
 PR evidence (hosts images OFF the PR branch — see RUNBOOK "PR evidence"):
   app-pilot publish <img> --feature S [--name F] [--caption C] [--width N]
                         host a QA image on the hidden app-pilot-assets store ref (no branch, no banner)
-  app-pilot inject-rules [dir]
-                        insert/refresh the app-pilot-rules block in the project's AGENTS.md
+  app-pilot inject-rules [dir] [--fix]
+                        insert/refresh the managed AGENTS.md blocks (app-pilot-rules +
+                        release-state) and assert the mobile `npm run ios` sim pin;
+                        --fix rewrites package.json's ios script. Exits 1 if the pin fails.
 
 Pre-PR code review (the SECOND QA axis — opt-in via target.py's REVIEW dict):
   app-pilot review [--base R] [--reviewers a,b] [--pr N|url] [--fail-on-high]
