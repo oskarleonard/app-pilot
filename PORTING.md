@@ -12,6 +12,7 @@ per-app values, and the empirical platform gotchas.
 | Engine (`mobile/core` or `web/core` + dispatcher) | **Free.** Lives in this repo; never copy it into a project. |
 | `scripts/.../app-pilot` shim + `_harness.py` | Copy both from `templates/` (never edited). |
 | `target.py` | **Write per project** from `target.example.py` — the CONFIG section only; the machinery (UDID auto-resolve + `target.local` pin, `--field` CLI) comes from `common/targetkit.py`. See "Per-app values". |
+| `rig.pin` (optional, one line) | **Declare the rig's identity** when the derived name (the dir above `scripts/app-pilot`) is ambiguous — in a monorepo every repo's web surface would be "web". Resolution: `APP_PILOT_RIG` env → gitignored `rig.pin.local` → committed `rig.pin` → the derived default. Consumers key run logs on it; add `rig.pin.local` to the adapter `.gitignore`. |
 | `product/` (app_pilot_api.py + INVARIANTS.md + FIGMA_MAP.md + RUNBOOK addendum) | **Re-derive per product** — this asserts THIS app's ground truth and rails. Port the *pattern* (see "Ground-truth layer"), never the rules. |
 | `ext/` | Only if the project needs extra mechanics (e.g. an autoplay layer for timed gameplay — sub-3s response windows an LLM can't keep up with live). |
 | `.claude/commands/app-pilot*.md` | Thin per-project pointers: "follow the engine RUNBOOK + product/RUNBOOK.md". The Rails sections are the per-app customization point. |
