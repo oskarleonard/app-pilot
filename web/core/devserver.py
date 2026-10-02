@@ -48,7 +48,11 @@ _SERVER_CWD = os.path.normpath(os.path.join(REPO, getattr(target, "SERVER_CWD", 
 
 
 def pids_on_port():
-    out = subprocess.run(["lsof", "-ti", f"tcp:{target.TESTER_PORT}"],
+    # LISTENERS only. A bare `lsof -i tcp:PORT` also returns every CLIENT with a
+    # connection to the port — the browser that has the app open, a simulator —
+    # and kill_port() signals each pid's whole process group, so a (re)start
+    # used to close the developer's browser along with the server.
+    out = subprocess.run(["lsof", "-ti", f"tcp:{target.TESTER_PORT}", "-sTCP:LISTEN"],
                          capture_output=True, text=True).stdout.split()
     return [int(p) for p in out if p.strip().isdigit()]
 
