@@ -61,6 +61,14 @@ checkout. Gitignore `product` and `product.pin.local` once pinned. No pin file �
 `.claude/commands/`. One mission, N projects, zero copy drift — see
 `missions/_format.md` for the schema and invocation contract.
 
+Every run leaves a machine record, `runs/<id>/run.json` (`common/runlog.py`):
+status, verdict, and — all optional, so older records keep parsing — a
+**gate** (`PASS` · `PASS_WITH_EXCEPTIONS` · `INCOMPLETE`, with reasons),
+**findings** that can carry their evidence (class, expected/observed, design
+frame ref, a region with its coordinate space, repro, basis, certainty) and
+**oracle questions** for sources that disagree. Field meanings and the gate
+rules: `missions/_format.md` › Run record.
+
 ## Install (once per machine)
 
 Clone **anywhere you like**, then pin the clone:

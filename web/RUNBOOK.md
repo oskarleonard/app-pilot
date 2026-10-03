@@ -143,7 +143,8 @@ from the closest available state, and note the gap).
   (read-mostly is the default). Product rails: `product/RUNBOOK.md`.
 - **Ground-truth sweep before Finish (local mode, if the product has one):**
   `app-pilot check` (registry: `product/INVARIANTS.md`). Bracket risky actions with
-  `app-pilot snapshot` / `app-pilot diff --expect-new N` (double-submit probe).
+  `app-pilot snapshot` / `app-pilot diff --expect-new N` — the double-submit
+  probe's verdict (see the checklist).
 - **Recovery hierarchy:** in-app navigation → `browser_navigate` back to a
   known route → page reload → `app-pilot serve` (server restart) last.
 - **Image-processing error = stop the loop (cost hazard, never self-heals in-session).**
@@ -166,17 +167,42 @@ from the closest available state, and note the gap).
 At least 1-2 per round: console-error sweep on every route visited ·
 failed/4xx/5xx network responses the UI swallowed · hydration-mismatch
 warnings · forms: invalid amounts (0, negative, huge, `1,23`), required-empty,
-rapid double-submit · cross-path consistency (same entity via two routes) ·
+double-submit (judged at the backend, below) · cross-path consistency (same
+entity via two routes, and against its source record — below) ·
 empty vs populated states · responsive breakpoints (`browser_resize`
 375/768/1440) on key screens · keyboard nav + focus visibility on one flow per
 round · query-cache staleness (mutate, check other screens reflect).
+
+Rails that apply whenever their trigger occurs:
+- **Capture before acting:** any new sheet, modal, dialog or browser prompt is
+  captured (`app-pilot shot` for the archive, full page — crops beside it,
+  never instead) and read (ARIA snapshot for its copy and controls; design
+  check when mapped) BEFORE the run clicks, types into or dismisses it. An
+  overlay acted on before it was captured counts as not captured.
+- **Double-submit at the backend:** the second activation fires while the
+  first request is still in flight (throttle or delay the request where the
+  tester allows; a click after the response tests nothing). Judge it on the
+  backend's record — `app-pilot snapshot` / `app-pilot diff --expect-new 1` over
+  the API list or ledger, plus resulting balances or counts — never on one
+  UI row, which can merge or lag. Back + Continue on multi-step forms: inputs
+  preserved, intent unchanged.
+- **Cross-surface against the record:** each render site of an entity is
+  compared with its siblings AND with the entity's source record (API /
+  ground truth) — all sites can be wrong the same way. Field-specific rules
+  apply; one finding per disagreement.
+- **Oracle discipline:** a brief may say what to test, never what is correct.
+  An unsupported correctness claim in operator text becomes an oracle
+  question with its citations (`missions/_format.md` › Run record) — not a
+  finding, not a scope cut.
 
 ## Design verification (on demand — `product/FIGMA_MAP.md`)
 `/check-figma <screen> [--strict]`: resolve the node in the product's
 FIGMA_MAP.md, fetch the Figma render (MCP `get_screenshot` → curl into
 `runs/<id>/figma/`), capture the app at the same route + viewport (`app-pilot shot`),
 judge structure+tokens by default. Strict mode may MEASURE (computed styles vs
-Figma variables) — see FIGMA_MAP.
+Figma variables) — see FIGMA_MAP. In a run with `check_figma: on` the design
+check runs on every in-scope mapped route BEFORE any flow legs, and each route
+reads exactly one of `checked` · `no mapping` · `skipped: unreachable — <why>`.
 
 ## Limits
 - The wake loop is session-scoped (terminal open, Mac awake).

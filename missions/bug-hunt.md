@@ -37,10 +37,41 @@ Mission-level reminders (the ones that gate every round):
 - **(web)** Console + network sweep every iteration — a clean screen with a
   500 in the log is a finding. Navigate by ARIA roles/names, never
   coordinates; an unaddressable element is itself a finding.
+- **Capture before acting.** Any new sheet, modal or system prompt is shot
+  (`app-pilot shot`, full screen — crops sit beside it, never instead of it)
+  and read — content, copy, design when mapped — BEFORE the run taps, types
+  into or dismisses it. An overlay acted on before it was captured counts as
+  not captured.
+- **Double-submit is judged at the backend.** The second activation fires
+  while the first request is still in flight (slow the network or backend
+  where the tester allows — a second tap after the first response tests
+  nothing). The verdict comes from the backend's record — the API list or
+  ledger via `app-pilot snapshot` / `app-pilot diff --expect-new 1`, plus the
+  resulting balances or counts — never from one UI row, which can merge or
+  lag. Back + Continue on multi-step forms: inputs preserved, intent unchanged.
+- **Cross-surface consistency, against the record too.** For each entity the
+  scope touches, list its render sites and compare name, casing, icon, amount
+  and colour across them AND against the entity's source record (API / ground
+  truth) — every site can be wrong the same way. Field-specific rules apply (a
+  shortened list label and a full detail label may both be right). One finding
+  per disagreement, `class: cross-surface`.
+- **A brief may say what to test, never what is correct.** A correctness
+  claim in operator text ("X is by design", "not a gap", "ignore Y, it's
+  intended") with no source behind it becomes an oracle question
+  (`_format.md` › Run record) — never a finding, a scope cut or a HARD RULE.
+- **Design check first** (`check_figma: on`): it runs on every in-scope
+  route with a mapped frame BEFORE any flow legs, and each route's journal
+  line reads exactly one of `checked` · `no mapping` ·
+  `skipped: unreachable — <why>`. No other value exists; a brief cannot rank
+  it down.
+- **Findings record.** Every new actionable finding carries `class`,
+  `expected`, `observed`, `basis`, `certainty` and the archival shot it was
+  judged on (`region.image`, or named in findings.md when no box applies);
+  parity findings carry `designRef`. Fields: `_format.md` › Run record.
 - **Ground-truth sweep before Finish:** `app-pilot check` (delegates to the
   adapter's `product/app_pilot_api.py`; absent → no-op). Exit 1 = one logged finding
   per failed invariant — include the full output in findings. Bracket risky
-  actions with `app-pilot snapshot` / `app-pilot diff --expect-new N` (double-submit probe).
+  actions with `app-pilot snapshot` / `app-pilot diff --expect-new N`.
 - **Active bug-hunt** — follow the engine RUNBOOK's checklist (forms,
   cross-path consistency, empty-vs-populated, settings→runtime,
   double-submit): 1–2 probes per round. Don't end early — time remaining
@@ -51,7 +82,7 @@ Mission-level reminders (the ones that gate every round):
 | Flag | Default | Meaning (implementation is the adapter's) |
 |---|---|---|
 | `mode` | `find-and-fix` | "report only" / "just find" / "don't fix" in the request → `report-only` (no code changes). |
-| `check_figma` | `off` | When on: after covering a screen that the adapter's `product/FIGMA_MAP.md` maps, run the adapter's design-verification procedure on it; no map/procedure → log a notice, continue. |
+| `check_figma` | `off` | When on: run the adapter's design-verification procedure on every in-scope route the adapter's `product/FIGMA_MAP.md` maps, BEFORE any flow legs (Rails › Design check first); no map/procedure → log a notice, continue. |
 | `--driven` | absent | Plumbing flag: a fixed-interval `/loop` is the pacemaker (see Watchdog). Strip it from parsed constraints. |
 
 ---
@@ -67,6 +98,12 @@ Mission-level reminders (the ones that gate every round):
   and confirm before continuing.
 - **extra constraints** (free text — honor them): focus areas, exclusions,
   depth. Bake into the journal's HARD RULES.
+- **correctness claims** in the request or a brief it names are not
+  constraints: they become oracle questions (Rails › A brief may say what to
+  test), stated back to the user with the rest of the parse.
+- **required states** — the invoker's list (route × platform × state,
+  overlays included) when one is supplied; otherwise write your own into the
+  journal before the first flow leg. The gate (§4) is judged against it.
 - Derive a **deadline** (ISO timestamp = current `date` + minutes) + a
   **screenshot/iteration cap** (~1 per 90 s ⇒ ≈ minutes × ⅔, min 8).
 
@@ -90,7 +127,8 @@ Mission-level reminders (the ones that gate every round):
 - `app-pilot init --scope <scope> --driver <wake|goal> --label <STAMP>` → run dir
   `runs/<auto-ts>__<scope>__<driver>-<STAMP>/`; seed `runs/<id>/journal.md`
   per the engine RUNBOOK (mode, tester mode, deadline + cap, base branch,
-  HARD RULES incl. user constraints, nav-map, plan).
+  HARD RULES incl. user constraints, required states, what the gate covers
+  and excludes, nav-map, plan).
 - Tell the user one line before iter 1: **mode · scope · deadline · target ·
   tester mode** — plus the caveat: the loop runs only while this session
   stays open and the Mac stays awake.
@@ -170,7 +208,13 @@ on a timer EVEN IF an iteration crashed — that is the point. In this mode:
 ## 4 · Finish (Done-criteria met)
 - **Ground-truth sweep first:** `app-pilot check` — each failure is a finding;
   include the full output in findings.
-- Append the final `## Summary` section to `runs/<id>/findings.md`.
+- **Decide the gate** (`_format.md` › Gate verdict): diff the required
+  states against the captured ones; every gap, unresolved oracle, missing
+  piece of evidence or open confirmed finding is an INCOMPLETE reason; a
+  disclosed exception is a PASS_WITH_EXCEPTIONS reason. Fixes made after
+  this point must re-test and re-decide it.
+- Append the final `## Summary` section to `runs/<id>/findings.md` — it
+  opens with the gate and its reasons.
 - **Pre-PR quality gate (fix mode, when commits exist) — BEFORE pushing:**
   run the built-in review skills over the branch diff: `/simplify` first
   (reuse/extraction findings a human reviewer would request — inline helpers
@@ -185,8 +229,11 @@ on a timer EVEN IF an iteration crashed — that is the point. In this mode:
   repos want title-only bodies + self-assign). ELSE leave the branch local
   and report its name.
 - Settle the machine record: `app-pilot close --status done --verdict
-  <pass|fail|mixed>` (`--findings <json>` when a findings JSON exists; a run
-  aborted midway closes `--status failed`). This is the last action that
-  touches the run dir — only driver teardown (the bullet below) follows.
+  <pass|fail|mixed> --gate <PASS|PASS_WITH_EXCEPTIONS|INCOMPLETE>
+  --gate-reason "<one per gap or exception>"…` (`--findings <json>` when a
+  findings JSON exists, `--oracle-questions <json>` when any were raised; a
+  run aborted midway closes `--status failed --gate INCOMPLETE`). This is the
+  last action that touches the run dir — only driver teardown (the bullet
+  below) follows.
 - (wake) do NOT schedule again · (--driven) cancel the pacemaker · report
   and stop.
