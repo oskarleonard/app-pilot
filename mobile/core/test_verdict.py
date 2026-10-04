@@ -19,6 +19,9 @@ Run:  python3 mobile/core/test_verdict.py    (or `python3 -m unittest` from core
 import contextlib
 import io
 import os
+import shutil
+import socket
+import subprocess
 import sys
 import tempfile
 import types
@@ -251,6 +254,41 @@ class VerdictTests(unittest.TestCase):
     def test_returns_strict_bool(self):
         self.assertIs(devserver.verdict(True, True, True, "app", 0, True), True)
         self.assertIs(devserver.verdict(True, True, True, "app", 5, True), False)
+
+
+class PortHolderTests(unittest.TestCase):
+    """pids_on_port() feeds kill_port(), which signals whole process groups —
+    so it must name the port's LISTENER and never a client connected to it."""
+
+    @unittest.skipUnless(shutil.which("lsof"), "needs lsof")
+    def test_a_connected_client_is_not_a_port_holder(self):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen()
+        port = srv.getsockname()[1]
+        client = subprocess.Popen(
+            [sys.executable, "-c",
+             "import socket, sys, time\n"
+             "s = socket.create_connection(('127.0.0.1', int(sys.argv[1])))\n"
+             "print('up', flush=True)\n"
+             "time.sleep(60)", str(port)],
+            stdout=subprocess.PIPE, text=True)
+        try:
+            self.assertEqual(client.stdout.readline().strip(), "up")
+            conn, _ = srv.accept()
+            saved, _target.PORT = _target.PORT, port
+            try:
+                pids = devserver.pids_on_port()
+            finally:
+                _target.PORT = saved
+                conn.close()
+            self.assertIn(os.getpid(), pids)
+            self.assertNotIn(client.pid, pids)
+        finally:
+            client.kill()
+            client.wait()
+            client.stdout.close()
+            srv.close()
 
 
 if __name__ == "__main__":
