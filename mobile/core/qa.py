@@ -25,6 +25,8 @@ Subcommands (operate on the "current" run unless --run given):
   note  <text...>                append a finding to findings.md
   act   <text...>                append a line to actions.log
   close --status done|failed|abandoned [--verdict pass|fail|mixed] [--findings J]
+        [--gate PASS|PASS_WITH_EXCEPTIONS|INCOMPLETE] [--gate-reason T]...
+        [--oracle-questions J] [--insufficient-evidence J]
                                  settle run.json (machine record; the closing step —
                                  it owns run.json and its own audit lines)
 
@@ -309,11 +311,14 @@ def cmd_close(args):
         sys.exit("app-pilot close: runlog module unavailable — cannot settle run.json")
     run = _run_dir(args)
     findings = runlog.load_findings(args.findings) if args.findings else None
+    extra = runlog.gate_kwargs(args)
     # Two-phase audit: an attempt line before (so a failed close is visible),
     # a settled line after (so the log never asserts a close that didn't land).
     _log(run, "actions.log", f"CLOSE attempt status={args.status}"
-         + (f" verdict={args.verdict}" if args.verdict else ""))
-    record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd)
+         + (f" verdict={args.verdict}" if args.verdict else "")
+         + (f" gate={args.gate}" if args.gate else ""))
+    record = runlog.close_run(run, args.status, args.verdict, findings, args.cost_usd,
+                              **extra)
     _log(run, "actions.log", f"CLOSE settled status={record['status']}")
     # The run is settled — drop the .current pointer so a stray follow-up
     # note/shot can't write into a closed run dir (the next init re-points it).
@@ -386,8 +391,9 @@ def main():
     pc = sub.add_parser("close", help="settle run.json as the run's last step")
     pc.add_argument("--status", required=True, choices=list(runlog.CLOSE_STATUSES))
     pc.add_argument("--verdict", choices=list(runlog.VERDICTS), default=None)
+    runlog.add_gate_args(pc)
     pc.add_argument("--findings", default=None,
-                    help="path to a JSON array of findings ({id,severity,title,ticket?})")
+                    help="path to a JSON array of findings (shape: common/runlog.py)")
     pc.add_argument("--cost-usd", type=float, dest="cost_usd", default=None)
     pc.add_argument("--run", default=None)
     pc.set_defaults(fn=cmd_close)

@@ -213,7 +213,12 @@ The patterns below only show up when you actively probe — sprinkle 1-2 per QA
 round, not every item every iter. **Do not end the loop early** — STEP0 exits ONLY
 on deadline or shot-cap; "the happy path looks done" is the signal to go *deeper*.
 
-### Modal & overlay residue
+### Modals & overlays — capture before acting, check residue after
+- **Capture before tap:** any new sheet, modal or system prompt is shot
+  (`app-pilot shot`, full screen — keep crops beside it, never instead) and
+  read (`app-pilot tree` for its copy and controls; design check when mapped)
+  BEFORE the first tap on it, dismissal included. An overlay tapped through
+  before it was captured counts as not captured.
 - After every sheet dismissal: `app-pilot tree` → the sheet's labels must be gone.
 - Modal-from-modal: close the inner one, verify the outer one is still in the
   expected state.
@@ -221,11 +226,21 @@ on deadline or shot-cap; "the happy path looks done" is the signal to go *deeper
 ### Forms & validation
 - Numeric inputs: `0`, negative, absurdly large, `1,23` vs `1.23`, letters, empty.
   Expected: clean validation errors, never NaN/crash/silent-accept.
-- Rapid double-tap on submit-style buttons — double-submit guard.
+- Double-submit: the second tap lands while the first request is still in
+  flight (a tap after the response tests nothing). Judge it on the backend's
+  record — `app-pilot snapshot` / `app-pilot diff --expect-new 1` over the API
+  list or ledger, plus resulting balances or counts — never on one UI row,
+  which can merge or lag. See the ground-truth section.
+- Back + Continue on multi-step forms: inputs preserved, intent unchanged.
 - Required-field-empty submits; whitespace-only text fields.
 
 ### Cross-path consistency
 - Same entity via two paths (list → detail vs other entry point) — identical data?
+- Every render site of an entity vs its **source record** (API / ground
+  truth), not only vs its siblings — all sites can be wrong the same way.
+  Compare name, casing, icon, amount, colour; field-specific rules apply (a
+  short list label and a full detail label may both be right). One finding
+  per disagreement.
 - Open a sheet, switch tab, come back — note which behaviour you observe
   (still open vs dismissed); surface to product if unclear which is intended.
 
@@ -241,6 +256,12 @@ on deadline or shot-cap; "the happy path looks done" is the signal to go *deeper
   then tab away/back (persisted?), then `app-pilot reload` (still persisted? —
   client-store vs server state confusion).
 
+### Oracle discipline
+- A brief may say what to test, never what is correct. An unsupported
+  correctness claim in operator text ("by design", "not a gap") becomes an
+  oracle question with its citations (`missions/_format.md` › Run record) —
+  not a finding, not a scope cut.
+
 ### Permission/role gating (if the product has roles)
 - Permission-gated UI that's *visible but dead* (tap does nothing) is a finding.
   Testing OTHER roles needs different accounts — observe + log, don't mutate roles.
@@ -252,6 +273,9 @@ decodes the Figma file structure and carries the `current` pointer per screen),
 fetch the Figma render via MCP `get_screenshot` (curl the PNG into
 `runs/<id>/figma/`), capture the sim in the SAME screen+state, view both, and
 judge in **structure+tokens** mode by default (`--strict` only on request).
+In a run with `check_figma: on` the design check runs on every in-scope
+mapped screen BEFORE any flow legs, and each screen reads exactly one of
+`checked` · `no mapping` · `skipped: unreachable — <why>`.
 Data differences are never findings; missing/extra elements, layout order,
 token/typography drift are. Log each as a `[design]` finding; record
 team-blessed divergences in the screen's accepted-deviations list. Screens not
@@ -276,8 +300,10 @@ ground-truth layer: the command no-ops; skip this section.)
 Additionally, bracket risky actions with the delta probes:
 `app-pilot snapshot --out /tmp/before.json` → do the action in the app →
 `app-pilot diff /tmp/before.json --expect-new 1` (exactly-one-created / status
-transitions / nothing-ever-disappears). The double-submit probe (rapid
-double-tap on a submit control) is `--expect-new 1` — two new rows = a real bug.
+transitions / nothing-ever-disappears). The double-submit probe is
+`--expect-new 1` with the second tap fired while the first request is still in
+flight — two new backend records = a real bug. The backend diff is the
+verdict; a single UI row is not (rows merge and lag).
 
 **Seeded data is static — write paths are only under test when the round
 CREATES something.** `app-pilot check` prints a coverage line and warns when nothing

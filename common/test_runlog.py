@@ -153,6 +153,174 @@ class RunlogLifecycle(unittest.TestCase):
         self.assertEqual(sorted(os.listdir(self.run_dir)), ["run.json"])
 
 
+LEGACY_FINDING = {"id": "f1", "severity": "low", "title": "t", "ticket": "T-1"}
+
+RICH_FINDING = {
+    "id": "f2", "severity": "high", "title": "hero chart uses the wrong fill",
+    "class": "parity", "expected": "accent fill per frame", "observed": "neutral fill",
+    "designRef": {"fileKey": "abc123", "nodeId": "12:34", "band": "1.2",
+                  "renderHash": "sha256:00ff", "render": "figma/home.png"},
+    "region": {"image": "screens/home.png", "space": "points", "imageW": 390,
+               "imageH": 844, "x": 16, "y": 120.5, "w": 358, "h": 200,
+               "transform": {"scale": 3}},
+    "repro": ["open home", "scroll to the chart"],
+    "basis": "measured", "certainty": "confirmed", "judge": "added",
+}
+
+ORACLE_QUESTION = {
+    "screen": "settings", "platform": "web", "statement": "brief says the toggle is hidden by design",
+    "citations": ["brief line 4", "frame 12:40"], "suggestedRecipient": "product",
+}
+
+
+class RunlogFindingsRecord(unittest.TestCase):
+    """The optional evidence fields and the gate — additive to schema 1."""
+
+    def setUp(self):
+        self.run_dir = tempfile.mkdtemp(prefix="20260817-101112__scope__goal-rec")
+        self.addCleanup(shutil.rmtree, self.run_dir, True)
+        self.fixtures = tempfile.mkdtemp(prefix="runlog-rec-fixtures-")
+        self.addCleanup(shutil.rmtree, self.fixtures, True)
+
+    def read(self):
+        with open(os.path.join(self.run_dir, "run.json")) as fh:
+            return json.load(fh)
+
+    def write_json(self, name, payload):
+        path = os.path.join(self.fixtures, name)
+        with open(path, "w") as fh:
+            json.dump(payload, fh)
+        return path
+
+    def test_legacy_closed_record_still_parses_and_retries(self):
+        legacy = {"schema": 1, "runId": os.path.basename(self.run_dir), "rig": "r",
+                  "scope": "s", "goal": "g", "startedAt": "2026-08-17T10:11:12Z",
+                  "endedAt": "2026-08-17T11:00:00Z", "status": "done",
+                  "verdict": "mixed", "findings": [LEGACY_FINDING]}
+        with open(os.path.join(self.run_dir, "run.json"), "w") as fh:
+            json.dump(legacy, fh)
+        self.assertEqual(runlog.read_run(self.run_dir), legacy)
+        self.assertEqual(runlog.close_run(self.run_dir, "done", verdict="mixed"), legacy)
+        # a gate the legacy close never recorded is differing evidence
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", gate="INCOMPLETE", gate_reasons=["x"])
+
+    def test_legacy_findings_file_still_loads(self):
+        path = self.write_json("legacy.json", [LEGACY_FINDING, {"id": "f9"}])
+        self.assertEqual(runlog.load_findings(path), [LEGACY_FINDING, {"id": "f9"}])
+
+    def test_rich_finding_round_trips(self):
+        runlog.open_run(self.run_dir, "rig-a", "s", "g")
+        path = self.write_json("rich.json", [LEGACY_FINDING, RICH_FINDING])
+        findings = runlog.load_findings(path)
+        runlog.close_run(self.run_dir, "done", verdict="fail", findings=findings,
+                         gate="INCOMPLETE", gate_reasons=["settings: empty state not captured"],
+                         oracle_questions=[ORACLE_QUESTION],
+                         insufficient_evidence=[{"screen": "home", "need": "full-screen capture"}])
+        on_disk = self.read()
+        self.assertEqual(on_disk["findings"], [LEGACY_FINDING, RICH_FINDING])
+        self.assertEqual(on_disk["gate"], "INCOMPLETE")
+        self.assertEqual(on_disk["gateReasons"], ["settings: empty state not captured"])
+        self.assertEqual(on_disk["oracleQuestions"], [ORACLE_QUESTION])
+        self.assertEqual(on_disk["insufficientEvidence"][0]["screen"], "home")
+        self.assertEqual(on_disk["verdict"], "fail")  # verdict stays alongside gate
+
+    def test_close_without_new_fields_writes_none_of_them(self):
+        runlog.open_run(self.run_dir, "rig-a", "s", "g")
+        runlog.close_run(self.run_dir, "done", verdict="pass", findings=[LEGACY_FINDING])
+        on_disk = self.read()
+        for key in ("gate", "gateReasons", "oracleQuestions", "insufficientEvidence"):
+            self.assertNotIn(key, on_disk)
+
+    def test_bad_finding_fields_refuse(self):
+        bad = [
+            {"class": "visual"}, {"basis": "guessed"}, {"certainty": "likely"},
+            {"judge": "agreed"}, {"repro": "one string"}, {"expected": 3},
+            {"designRef": "12:34"}, {"designRef": {"nodeId": "12:34"}},
+            {"region": {**RICH_FINDING["region"], "space": "inches"}},
+            {"region": {k: v for k, v in RICH_FINDING["region"].items() if k != "space"}},
+            {"region": {**RICH_FINDING["region"], "x": True}},
+            {"region": {**RICH_FINDING["region"], "imageW": 0}},
+            {"region": {**RICH_FINDING["region"], "h": float("nan")}},
+        ]
+        for extra in bad:
+            with self.subTest(extra=extra):
+                with self.assertRaises(ValueError):
+                    runlog.validate_finding({**LEGACY_FINDING, **extra})
+        path = self.write_json("bad.json", [{**LEGACY_FINDING, "class": "visual"}])
+        with self.assertRaises(ValueError):
+            runlog.load_findings(path)
+
+    def test_close_validates_findings_passed_directly(self):
+        runlog.open_run(self.run_dir, "rig-a", "s", "g")
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", findings=[{**LEGACY_FINDING, "certainty": "maybe"}])
+        self.assertEqual(self.read()["status"], "running")  # refused before any write
+
+    def test_gate_rules(self):
+        runlog.open_run(self.run_dir, "rig-a", "s", "g")
+        refused = [
+            dict(status="done", gate="pass"),
+            dict(status="done", gate="PASS_WITH_EXCEPTIONS"),  # exceptions undisclosed
+            dict(status="done", gate="INCOMPLETE", gate_reasons=[]),  # gap unnamed
+            dict(status="done", gate="INCOMPLETE", gate_reasons=["  "]),
+            dict(status="failed", gate="PASS"),  # a dead run certifies nothing
+            dict(status="abandoned", gate="PASS_WITH_EXCEPTIONS", gate_reasons=["x"]),
+            dict(status="done", gate_reasons=["orphan reason"]),
+        ]
+        for kwargs in refused:
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValueError):
+                    runlog.close_run(self.run_dir, **kwargs)
+        record = runlog.close_run(self.run_dir, "failed", gate="INCOMPLETE",
+                                  gate_reasons=["lane died before settle"])
+        self.assertEqual(record["gate"], "INCOMPLETE")
+
+    def test_pass_needs_no_reasons(self):
+        runlog.open_run(self.run_dir, "rig-a", "s", "g")
+        record = runlog.close_run(self.run_dir, "done", verdict="pass", gate="PASS")
+        self.assertEqual(record["gate"], "PASS")
+        self.assertNotIn("gateReasons", record)
+
+    def test_gate_idempotency(self):
+        runlog.open_run(self.run_dir, "rig-a", "s", "g")
+        reasons = ["accepted-deviation: f2 — spacing token pending design update [frame 12:34]"]
+        first = runlog.close_run(self.run_dir, "done", gate="PASS_WITH_EXCEPTIONS",
+                                 gate_reasons=reasons)
+        self.assertEqual(runlog.close_run(self.run_dir, "done", gate="PASS_WITH_EXCEPTIONS",
+                                          gate_reasons=reasons), first)
+        self.assertEqual(runlog.close_run(self.run_dir, "done"), first)
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", gate="PASS")
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", gate="PASS_WITH_EXCEPTIONS",
+                             gate_reasons=["a different disclosure"])
+        with self.assertRaises(ValueError):
+            runlog.close_run(self.run_dir, "done", oracle_questions=[ORACLE_QUESTION])
+
+    def test_oracle_question_and_recapture_shapes(self):
+        bad_questions = [
+            {k: v for k, v in ORACLE_QUESTION.items() if k != "statement"},
+            {**ORACLE_QUESTION, "citations": []},
+            {**ORACLE_QUESTION, "citations": "brief line 4"},
+            {**ORACLE_QUESTION, "suggestedRecipient": "qa"},
+            "a bare string",
+        ]
+        for question in bad_questions:
+            with self.subTest(question=question):
+                with self.assertRaises(ValueError):
+                    runlog.validate_oracle_question(question)
+        minimal = {"screen": "s", "statement": "x", "citations": ["c"]}
+        runlog.validate_oracle_question(minimal)
+        for entry in ({"screen": "home"}, {"need": "x"}, ["home"]):
+            with self.subTest(entry=entry):
+                with self.assertRaises(ValueError):
+                    runlog.validate_insufficient_evidence(entry)
+        path = self.write_json("oq.json", {"not": "an array"})
+        with self.assertRaises(ValueError):
+            runlog.load_oracle_questions(path)
+
+
 class RunlogCli(unittest.TestCase):
     def setUp(self):
         self.run_dir = tempfile.mkdtemp(prefix="20260817-101112__scope__goal-cli")
@@ -183,6 +351,29 @@ class RunlogCli(unittest.TestCase):
         record = json.loads(closed.stdout)
         self.assertEqual(record["verdict"], "pass")
         self.assertEqual(len(record["findings"]), 1)
+
+    def test_close_with_gate_flags(self):
+        self.cli("open", self.run_dir, "--rig", "r", "--scope", "s", "--goal", "g")
+        oq_path = os.path.join(self.fixtures, "oq.json")
+        with open(oq_path, "w") as fh:
+            json.dump([ORACLE_QUESTION], fh)
+        closed = self.cli(
+            "close", self.run_dir, "--status", "done", "--verdict", "mixed",
+            "--gate", "INCOMPLETE", "--gate-reason", "home: error state not captured",
+            "--gate-reason", "settings: oracle unresolved", "--oracle-questions", oq_path,
+        )
+        self.assertEqual(closed.returncode, 0, closed.stderr)
+        record = json.loads(closed.stdout)
+        self.assertEqual(record["gate"], "INCOMPLETE")
+        self.assertEqual(len(record["gateReasons"]), 2)
+        self.assertEqual(record["oracleQuestions"], [ORACLE_QUESTION])
+
+    def test_bad_gate_flag_errors(self):
+        self.cli("open", self.run_dir, "--rig", "r", "--scope", "s", "--goal", "g")
+        bad = self.cli("close", self.run_dir, "--status", "done", "--gate", "GREEN")
+        self.assertNotEqual(bad.returncode, 0)
+        unnamed = self.cli("close", self.run_dir, "--status", "done", "--gate", "INCOMPLETE")
+        self.assertNotEqual(unnamed.returncode, 0)
 
     def test_missing_run_dir_errors(self):
         gone = self.cli("open", "/nonexistent/run/dir", "--rig", "r", "--scope", "s", "--goal", "g")
