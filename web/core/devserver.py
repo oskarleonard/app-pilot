@@ -19,6 +19,7 @@ import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -68,14 +69,27 @@ def kill_port():
                 pass
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
 def server_ok():
+    # A TLS tester mode (e.g. `next dev --experimental-https`) serves a
+    # self-signed localhost cert — verification would false-DOWN it; the
+    # ping is loopback-only, so skipping verification is safe.
+    ctx = ssl._create_unverified_context() if target.APP_URL.startswith("https://localhost") else None
+    # The tester's OWN answer is the signal, so a redirect counts as UP. A
+    # real-env tester sends `/` to login on the deployed host, which the
+    # pilot browser maps back to this tester but urllib does not — following
+    # it probes the deployed site instead (an auth-gated one 403s a healthy
+    # tester to DOWN).
+    opener = urllib.request.build_opener(_NoRedirect, urllib.request.HTTPSHandler(context=ctx))
     try:
-        # A TLS tester mode (e.g. `next dev --experimental-https`) serves a
-        # self-signed localhost cert — verification would false-DOWN it; the
-        # ping is loopback-only, so skipping verification is safe.
-        ctx = ssl._create_unverified_context() if target.APP_URL.startswith("https://localhost") else None
-        with urllib.request.urlopen(target.APP_URL, timeout=5, context=ctx) as r:
+        with opener.open(target.APP_URL, timeout=5) as r:
             return r.status == 200
+    except urllib.error.HTTPError as e:
+        return 300 <= e.code < 400
     except Exception:
         return False
 
