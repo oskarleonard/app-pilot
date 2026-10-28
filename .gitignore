@@ -3,3 +3,6 @@ __pycache__/
 
 # ensemble-ai review trails — machine-local, never committed
 .ensemble-ai/
+
+# macOS Finder metadata
+.DS_Store
