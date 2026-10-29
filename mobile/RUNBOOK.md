@@ -91,6 +91,13 @@ body, not just describe it:
   the DISPLAY in the PR body: `<img src="…?raw=true" width="580" />` —
   **580px is the standard.**
 - **One-line "what changed" caption above each image** so the diff reads at a glance.
+- **A feature PR shows design vs implementation, not before/after.** When the PR
+  adds or changes a screen rather than fixing one, the montage pairs the Figma
+  frame (EXPECTED, resolved via `product/FIGMA_MAP.md` or the frame the ticket
+  links; `sips -Z 1800` copy of the export) on the LEFT with the implementation
+  shot (ACTUAL, cold reload) on the RIGHT, one pair per changed screen, same
+  `app-pilot publish` hosting and 580px display. One pair per surface the PR
+  touches; name any surface that has no run instead of leaving it out.
 - **Host images via `app-pilot publish` — NEVER on the PR/run branch.** Run
   `app-pilot publish <montage.png> --feature <flow>-<topic> [--caption "…"]`: it
   appends the PNG to the hidden, append-only `refs/app-pilot-assets/store` ref (no
