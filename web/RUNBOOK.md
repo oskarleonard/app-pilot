@@ -100,6 +100,13 @@ routes from the nav in the first ARIA snapshot — don't guess.
 
 ## PR evidence for visual fixes (host via `app-pilot publish` — NEVER the PR branch)
 A find-and-fix run that changed anything ON-SCREEN should SHOW it in the PR body:
+- **A feature PR shows design vs implementation, not before/after.** When the PR
+  adds or changes a screen rather than fixing one, the montage pairs the Figma
+  frame (EXPECTED, resolved via `product/FIGMA_MAP.md` or the frame the ticket
+  links; `sips -Z 1800` copy of the export) on the LEFT with the implementation
+  shot (ACTUAL, cold reload) on the RIGHT, one pair per changed screen, same
+  `app-pilot publish` hosting and 580px display. One pair per surface the PR
+  touches; name any surface that has no run instead of leaving it out.
 - **Before/after montage per visual fix** — same screen, pre- vs post-fix, side by
   side. **Capture the failing state with an archival `app-pilot shot` when you LOG the
   bug** — that is the before half; `browser_take_screenshot` is in-session only
